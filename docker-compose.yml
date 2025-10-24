@@ -1,0 +1,15 @@
+# MySQL service for local development
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    command: --default-authentication-plugin=caching_sha2_password
+
+volumes:
+  mysql-data:
