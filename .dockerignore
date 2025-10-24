@@ -1,0 +1,8 @@
+.git
+node_modules
+dist
+drizzle
+.env
+.env.*
+.DS_Store
+frontend

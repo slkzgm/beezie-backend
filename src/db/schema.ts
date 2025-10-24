@@ -3,7 +3,6 @@ import {
   index,
   int,
   mysqlTable,
-  serial,
   uniqueIndex,
   varchar
 } from "drizzle-orm/mysql-core";
@@ -12,7 +11,7 @@ import { sql } from "drizzle-orm";
 export const users = mysqlTable(
   "users",
   {
-    id: serial("id").primaryKey(),
+    id: int("id").autoincrement().primaryKey(),
     email: varchar("email", { length: 255 }).notNull(),
     passwordHash: varchar("password_hash", { length: 255 }).notNull(),
     displayName: varchar("display_name", { length: 255 }),
@@ -26,7 +25,7 @@ export const users = mysqlTable(
 export const wallets = mysqlTable(
   "wallets",
   {
-    id: serial("id").primaryKey(),
+    id: int("id").autoincrement().primaryKey(),
     userId: int("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -43,7 +42,7 @@ export const wallets = mysqlTable(
 export const refreshTokens = mysqlTable(
   "refresh_tokens",
   {
-    id: serial("id").primaryKey(),
+    id: int("id").autoincrement().primaryKey(),
     userId: int("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

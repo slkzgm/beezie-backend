@@ -12,8 +12,8 @@
     "lint:fix": "bun run lint -- --fix",
     "format": "prettier --write \"{src,scripts}/**/*.ts\"",
     "format:check": "prettier --check \"{src,scripts}/**/*.ts\"",
-    "drizzle:generate": "drizzle-kit generate:mysql --config ./drizzle.config.ts",
-    "drizzle:migrate": "drizzle-kit migrate:mysql --config ./drizzle.config.ts",
+    "drizzle:generate": "DRIZZLE_CONFIG=./drizzle.config.ts drizzle-kit generate",
+    "drizzle:migrate": "DRIZZLE_CONFIG=./drizzle.config.ts drizzle-kit migrate",
     "typechain": "typechain --config ./typechain.config.ts"
   },
   "devDependencies": {

@@ -1,15 +1,44 @@
-# MySQL service for local development
 services:
   mysql:
-    image: mysql:8.4
+    image: mysql:8.0
     restart: unless-stopped
+    profiles:
+      - dev
+      - prod
     env_file:
       - .env
-    ports:
-      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
-    command: --default-authentication-plugin=caching_sha2_password
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles:
+      - prod
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      HOST: 0.0.0.0
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
 
 volumes:
   mysql-data:

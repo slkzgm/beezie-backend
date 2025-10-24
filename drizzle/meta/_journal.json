@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1761311549870,
+      "tag": "0000_demonic_karen_page",
+      "breakpoints": true
+    }
+  ]
+}
