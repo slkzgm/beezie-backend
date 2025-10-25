@@ -1,4 +1,4 @@
-import type { ResultSetHeader } from "mysql2";
+import type { ResultSetHeader } from 'mysql2';
 
 const unwrapResultHeader = (result: unknown): Partial<ResultSetHeader> | undefined => {
   if (!result) {

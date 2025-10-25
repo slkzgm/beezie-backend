@@ -1,6 +1,6 @@
-import { createApp } from "@/app";
-import { createServer } from "@/server";
-import { env } from "@/config/env";
+import { createApp } from '@/app';
+import { createServer } from '@/server';
+import { env } from '@/config/env';
 
 const app = createApp();
 

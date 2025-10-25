@@ -1,6 +1,6 @@
-import type { Database } from "@/db/types";
+import type { Database } from '@/db/types';
 
-type TransactionType = Parameters<Database["transaction"]>[0] extends (
+type TransactionType = Parameters<Database['transaction']>[0] extends (
   tx: infer TX,
   ...args: unknown[]
 ) => Promise<unknown>
@@ -11,7 +11,7 @@ export type Transaction = TransactionType;
 
 export const withTransaction = async <T>(
   db: Database,
-  handler: (tx: TransactionType) => Promise<T>
+  handler: (tx: TransactionType) => Promise<T>,
 ): Promise<T> => {
   return db.transaction((tx) => handler(tx as TransactionType));
 };

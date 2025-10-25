@@ -1,15 +1,15 @@
-import { eq } from "drizzle-orm";
+import { eq } from 'drizzle-orm';
 
-import type { Database } from "@/db/types";
-import { refreshTokens } from "@/db/schema";
-import { getAffectedRows } from "@/db/utils/mysql";
+import type { Database } from '@/db/types';
+import { refreshTokens } from '@/db/schema';
+import { getAffectedRows } from '@/db/utils/mysql';
 
 export type RefreshTokenRecord = typeof refreshTokens.$inferSelect;
 export type NewRefreshTokenRecord = typeof refreshTokens.$inferInsert;
 
 export const createRefreshToken = async (
   db: Database,
-  data: NewRefreshTokenRecord
+  data: NewRefreshTokenRecord,
 ): Promise<RefreshTokenRecord | null> => {
   await db.insert(refreshTokens).values(data);
   return findRefreshTokenByToken(db, data.token);
@@ -17,7 +17,7 @@ export const createRefreshToken = async (
 
 export const findRefreshTokenByToken = async (
   db: Database,
-  token: string
+  token: string,
 ): Promise<RefreshTokenRecord | null> => {
   const [refreshToken] = await db
     .select()
@@ -35,7 +35,7 @@ export const deleteRefreshToken = async (db: Database, token: string): Promise<b
 
 export const deleteRefreshTokensByUserId = async (
   db: Database,
-  userId: number
+  userId: number,
 ): Promise<number> => {
   const result = await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
   return getAffectedRows(result);

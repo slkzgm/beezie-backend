@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq } from 'drizzle-orm';
 
-import type { Database } from "@/db/types";
-import { users } from "@/db/schema";
-import { getInsertId } from "@/db/utils/mysql";
+import type { Database } from '@/db/types';
+import { users } from '@/db/schema';
+import { getInsertId } from '@/db/utils/mysql';
 
 export type UserRecord = typeof users.$inferSelect;
 export type NewUserRecord = typeof users.$inferInsert;
@@ -24,11 +24,7 @@ export const findUserById = async (db: Database, id: number) => {
   return user ?? null;
 };
 
-export const updateUserPassword = async (
-  db: Database,
-  id: number,
-  passwordHash: string
-) => {
+export const updateUserPassword = async (db: Database, id: number, passwordHash: string) => {
   await db.update(users).set({ passwordHash }).where(eq(users.id, id));
   return findUserById(db, id);
 };
@@ -36,7 +32,7 @@ export const updateUserPassword = async (
 export const updateUserDisplayName = async (
   db: Database,
   id: number,
-  displayName: string | null
+  displayName: string | null,
 ) => {
   await db.update(users).set({ displayName }).where(eq(users.id, id));
   return findUserById(db, id);

@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { eq } from 'drizzle-orm';
 
-import type { Database } from "@/db/types";
-import { wallets } from "@/db/schema";
-import { getInsertId } from "@/db/utils/mysql";
+import type { Database } from '@/db/types';
+import { wallets } from '@/db/schema';
+import { getInsertId } from '@/db/utils/mysql';
 
 export type WalletRecord = typeof wallets.$inferSelect;
 export type NewWalletRecord = typeof wallets.$inferInsert;
@@ -36,12 +36,9 @@ export const findWalletByAddress = async (db: Database, address: string) => {
 export const updateEncryptedPrivateKey = async (
   db: Database,
   walletId: number,
-  encryptedPrivateKey: string
+  encryptedPrivateKey: string,
 ) => {
-  await db
-    .update(wallets)
-    .set({ encryptedPrivateKey })
-    .where(eq(wallets.id, walletId));
+  await db.update(wallets).set({ encryptedPrivateKey }).where(eq(wallets.id, walletId));
 
   return findWalletById(db, walletId);
 };
