@@ -1,8 +1,10 @@
+SHELL := /bin/bash
+
 COMPOSE ?= docker compose
 DEV_PROFILE := --profile dev
 PROD_PROFILE := --profile prod
 
-.PHONY: help dev-up dev-down dev-reset dev-logs dev-migrate db-shell prod-build prod-up prod-down prod-logs prod-restart
+.PHONY: help dev-up dev-down dev-reset dev-logs dev-migrate db-shell prod-build prod-up prod-down prod-logs prod-restart ensure-env health
 
 help:
 	@echo "Available targets:"
@@ -17,35 +19,53 @@ help:
 	@echo "  make prod-down     # Stop API + MySQL"
 	@echo "  make prod-logs     # Tail production logs"
 	@echo "  make prod-restart  # Rebuild and restart production stack"
+	@echo "  make health        # Call the /health endpoint on the running API"
 
-dev-up:
+ensure-env:
+	@test -f .env || (echo "Missing .env file. Copy .env.example to .env before running this target." && exit 1)
+
+dev-up: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) up -d mysql
 
-dev-down:
+dev-down: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) down
 
-dev-reset:
+dev-reset: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) down -v
 
-dev-logs:
+dev-logs: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) logs -f mysql
 
-dev-migrate:
+dev-migrate: ensure-env
 	bun run drizzle:migrate
 
-db-shell:
+db-shell: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) exec mysql mysql -u$$MYSQL_USER -p$$MYSQL_PASSWORD $$MYSQL_DATABASE
 
 prod-build:
 	$(COMPOSE) $(PROD_PROFILE) build
 
-prod-up:
+prod-up: ensure-env
 	$(COMPOSE) $(PROD_PROFILE) up -d --build
 
-prod-down:
+prod-down: ensure-env
 	$(COMPOSE) $(PROD_PROFILE) down
 
-prod-logs:
+prod-logs: ensure-env
 	$(COMPOSE) $(PROD_PROFILE) logs -f
 
 prod-restart: prod-down prod-up
+
+health: ensure-env
+	@set -a; source .env; set +a; \
+	HOST=$${HOST:-127.0.0.1}; \
+	PORT=$${PORT:-3000}; \
+	echo "Checking health endpoint at http://$${HOST}:$${PORT}/health"; \
+	if curl -fsS "http://$${HOST}:$${PORT}/health" >/tmp/beezie-health.json; then \
+	  cat /tmp/beezie-health.json; \
+	  rm /tmp/beezie-health.json; \
+	else \
+	  echo "Health check failed. Ensure the API is running."; \
+	  rm -f /tmp/beezie-health.json; \
+	  exit 1; \
+	fi
