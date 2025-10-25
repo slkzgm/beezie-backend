@@ -14,7 +14,7 @@
     "format:check": "prettier --check \"{src,scripts}/**/*.ts\"",
     "drizzle:generate": "DRIZZLE_CONFIG=./drizzle.config.ts drizzle-kit generate",
     "drizzle:migrate": "DRIZZLE_CONFIG=./drizzle.config.ts drizzle-kit migrate",
-    "typechain": "typechain --config ./typechain.config.ts"
+    "typechain": "typechain --target ethers-v6 --out-dir ./typechain \"artifacts/**/*.json\""
   },
   "devDependencies": {
     "@eslint/js": "^9.38.0",

@@ -14,9 +14,9 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   ENCRYPTION_KEY: z.string().min(32, 'Encryption key must be at least 32 characters'),
   FLOW_ACCESS_API: z.string().url(),
-  FLOW_USDC_FACTORY_ADDRESS: z
+  FLOW_USDC_CONTRACT_ADDRESS: z
     .string()
-    .length(42, 'Factory address must be a valid EVM-style address'),
+    .length(42, 'USDC contract address must be a valid EVM-style address'),
   FLOW_NETWORK: z.enum(['testnet', 'mainnet-beta']).default('testnet'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
@@ -51,7 +51,7 @@ export const env = {
   },
   flow: {
     accessApi: data.FLOW_ACCESS_API,
-    factoryAddress: data.FLOW_USDC_FACTORY_ADDRESS,
+    usdcContractAddress: data.FLOW_USDC_CONTRACT_ADDRESS,
     network: data.FLOW_NETWORK,
   },
   logging: {
