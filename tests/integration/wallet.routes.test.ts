@@ -13,7 +13,10 @@ afterEach(() => {
 describe('Wallet routes', () => {
   test('POST /wallet/transfer returns transaction hash', async () => {
     const { walletService } = await import('@/services/wallet.service');
-    spyOn(walletService, 'transferUsdc').mockResolvedValue({ transactionHash: '0xtx' });
+    spyOn(walletService, 'transferUsdc').mockResolvedValue({
+      status: 'completed',
+      transactionHash: '0xtx',
+    });
 
     const tokenModule = await import('@/services/token.service');
     spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
@@ -39,6 +42,37 @@ describe('Wallet routes', () => {
     expect(response.status).toBe(202);
     const json = (await response.json()) as { transactionHash: string };
     expect(json.transactionHash).toBe('0xtx');
+  });
+
+  test('POST /wallet/transfer surfaces pending status', async () => {
+    const { walletService } = await import('@/services/wallet.service');
+    spyOn(walletService, 'transferUsdc').mockResolvedValue({ status: 'pending' });
+
+    const tokenModule = await import('@/services/token.service');
+    spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
+      sub: '1',
+      tokenType: 'access',
+    });
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+      },
+      body: JSON.stringify({
+        amount: '1.5',
+        destinationAddress: '0x0000000000000000000000000000000000000002',
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    const json = (await response.json()) as Record<string, unknown>;
+    expect(json.message).toBe('Transfer already in progress');
+    expect(json).not.toHaveProperty('transactionHash');
   });
 
   test('fails when auth guard rejects token', async () => {
@@ -127,6 +161,7 @@ describe('Wallet routes', () => {
   test('passes Idempotency-Key header to wallet service', async () => {
     const { walletService } = await import('@/services/wallet.service');
     const transferSpy = spyOn(walletService, 'transferUsdc').mockResolvedValue({
+      status: 'completed',
       transactionHash: '0xabc',
     });
 

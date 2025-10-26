@@ -5,6 +5,9 @@ import { transferRequests } from '@/db/schema';
 
 export type TransferRequestRecord = typeof transferRequests.$inferSelect;
 export type NewTransferRequestRecord = typeof transferRequests.$inferInsert;
+export type UpdateTransferRequestRecord = Partial<
+  Pick<TransferRequestRecord, 'transactionHash' | 'status'>
+>;
 
 export const findByUserAndKeyHash = async (
   db: Database,
@@ -28,4 +31,12 @@ export const createTransferRequest = async (
 ): Promise<TransferRequestRecord | null> => {
   await db.insert(transferRequests).values(data);
   return findByUserAndKeyHash(db, data.userId, data.idempotencyKeyHash);
+};
+
+export const updateTransferRequest = async (
+  db: Database,
+  id: number,
+  data: UpdateTransferRequestRecord,
+): Promise<void> => {
+  await db.update(transferRequests).set(data).where(eq(transferRequests.id, id));
 };

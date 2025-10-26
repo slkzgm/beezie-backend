@@ -14,7 +14,8 @@ CREATE TABLE `transfer_requests` (
 	`idempotency_key_hash` varchar(64) NOT NULL,
 	`amount` varchar(64) NOT NULL,
 	`destination_address` varchar(42) NOT NULL,
-	`transaction_hash` varchar(66) NOT NULL,
+	`transaction_hash` varchar(66),
+	`status` enum('pending','completed') NOT NULL DEFAULT 'pending',
 	`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	CONSTRAINT `transfer_requests_id` PRIMARY KEY(`id`),
 	CONSTRAINT `transfer_requests_user_key_idx` UNIQUE(`user_id`,`idempotency_key_hash`)

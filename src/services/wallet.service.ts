@@ -6,6 +6,7 @@ import type { Database } from '@/db/types';
 import {
   wallets as walletsRepository,
   transferRequests as transferRequestsRepository,
+  withTransaction,
 } from '@/db/repositories';
 import { cryptoManager } from '@/lib/crypto';
 import { getWalletSigner, getUsdcContract, getUsdcDecimals } from '@/lib/ethers';
@@ -25,9 +26,14 @@ export class WalletError extends Error {
   }
 }
 
-type TransferResult = {
-  transactionHash: string;
-};
+type TransferResult =
+  | {
+      status: 'completed';
+      transactionHash: string;
+    }
+  | {
+      status: 'pending';
+    };
 
 export type WalletServiceDependencies = {
   findWalletByUserId: typeof walletsRepository.findWalletByUserId;
@@ -37,6 +43,7 @@ export type WalletServiceDependencies = {
   getUsdcDecimals: typeof getUsdcDecimals;
   findTransferRequest: typeof transferRequestsRepository.findByUserAndKeyHash;
   createTransferRequest: typeof transferRequestsRepository.createTransferRequest;
+  updateTransferRequest: typeof transferRequestsRepository.updateTransferRequest;
 };
 
 const defaultDependencies: WalletServiceDependencies = {
@@ -47,7 +54,8 @@ const defaultDependencies: WalletServiceDependencies = {
   getUsdcDecimals,
   findTransferRequest: transferRequestsRepository.findByUserAndKeyHash,
   createTransferRequest: transferRequestsRepository.createTransferRequest,
-};
+  updateTransferRequest: transferRequestsRepository.updateTransferRequest,
+}; 
 
 export class WalletService {
   constructor(private readonly deps: WalletServiceDependencies = defaultDependencies) {}
@@ -80,22 +88,73 @@ export class WalletService {
 
     const idempotencyKeyHash = idempotencyKey ? sha256Hex(idempotencyKey) : undefined;
 
+    type ReservedTransferRequest = NonNullable<
+      Awaited<ReturnType<WalletServiceDependencies['findTransferRequest']>>
+    >;
+
+    let reservation: ReservedTransferRequest | null = null;
+    let reservationCreated = false;
+
     if (idempotencyKeyHash) {
-      const previous = await this.deps.findTransferRequest(db, numericUserId, idempotencyKeyHash);
-      if (previous) {
-        if (
-          previous.amount !== payload.amount ||
-          previous.destinationAddress.toLowerCase() !== payload.destinationAddress.toLowerCase()
-        ) {
-          throw new WalletError('Idempotency key already used with different payload', 409);
+      const reservationResult = await withTransaction(db, async (tx) => {
+        const existing = await this.deps.findTransferRequest(tx, numericUserId, idempotencyKeyHash);
+        if (existing) {
+          this.ensureMatchingIdempotentPayload(existing, payload);
+          return { record: existing, created: false } as const;
         }
 
-        logger.info('Returning cached transfer result', {
+        try {
+          const created = await this.deps.createTransferRequest(tx, {
+            userId: numericUserId,
+            idempotencyKeyHash,
+            amount: payload.amount,
+            destinationAddress: payload.destinationAddress,
+            status: 'pending',
+            transactionHash: null,
+          });
+
+          if (!created) {
+            throw new WalletError('Failed to reserve transfer request', 500);
+          }
+
+          return { record: created, created: true } as const;
+        } catch (error) {
+          if (this.isDuplicateEntryError(error)) {
+            const concurrent = await this.deps.findTransferRequest(
+              tx,
+              numericUserId,
+              idempotencyKeyHash,
+            );
+            if (!concurrent) {
+              throw new WalletError('Failed to reserve transfer request', 500);
+            }
+
+            this.ensureMatchingIdempotentPayload(concurrent, payload);
+            return { record: concurrent, created: false } as const;
+          }
+
+          throw error;
+        }
+      });
+
+      reservation = reservationResult.record;
+      reservationCreated = reservationResult.created;
+
+      if (!reservationCreated) {
+        if (reservation.status === 'completed' && reservation.transactionHash) {
+          logger.info('Returning cached transfer result', {
+            userId: numericUserId,
+            transactionHash: reservation.transactionHash,
+          });
+
+          return { status: 'completed', transactionHash: reservation.transactionHash };
+        }
+
+        logger.info('Transfer already in progress for idempotency key', {
           userId: numericUserId,
-          transactionHash: previous.transactionHash,
         });
 
-        return { transactionHash: previous.transactionHash };
+        return { status: 'pending' };
       }
     }
 
@@ -122,17 +181,15 @@ export class WalletService {
         transactionHash: tx.hash,
       });
 
-      if (idempotencyKeyHash) {
-        await this.deps.createTransferRequest(db, {
-          userId: numericUserId,
-          idempotencyKeyHash,
-          amount: payload.amount,
-          destinationAddress: payload.destinationAddress,
+      if (idempotencyKeyHash && reservation) {
+        await this.deps.updateTransferRequest(db, reservation.id, {
           transactionHash: tx.hash,
+          status: 'completed',
         });
       }
 
       return {
+        status: 'completed',
         transactionHash: tx.hash,
       };
     } catch (error: unknown) {
@@ -170,6 +227,27 @@ export class WalletService {
     }
 
     return new WalletError('Failed to transfer tokens', 500);
+  }
+
+  private ensureMatchingIdempotentPayload(
+    existing: NonNullable<Awaited<ReturnType<WalletServiceDependencies['findTransferRequest']>>>,
+    payload: TransferInput,
+  ) {
+    if (
+      existing.amount !== payload.amount ||
+      existing.destinationAddress.toLowerCase() !== payload.destinationAddress.toLowerCase()
+    ) {
+      throw new WalletError('Idempotency key already used with different payload', 409);
+    }
+  }
+
+  private isDuplicateEntryError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const mysqlError = error as { code?: string; errno?: number };
+    return mysqlError.code === 'ER_DUP_ENTRY' || mysqlError.errno === 1062;
   }
 }
 

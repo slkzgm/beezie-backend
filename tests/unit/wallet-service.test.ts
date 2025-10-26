@@ -4,7 +4,7 @@ import '../setup';
 
 import type { Signer } from 'ethers';
 import type { Database } from '@/db/types';
-import type { Wallet } from '@/db/schema';
+import type { TransferRequest, Wallet } from '@/db/schema';
 import type { TransferInput } from '@/schemas/wallet.schema';
 import type { FlowUSDC } from '../../typechain/FlowUSDC';
 import {
@@ -18,7 +18,10 @@ const basePayload: TransferInput = {
   destinationAddress: '0x0000000000000000000000000000000000000002',
 };
 
-const mockDb = {} as unknown as Database;
+const mockDb = {
+  transaction: <T>(handler: (tx: Database) => Promise<T>) =>
+    handler({} as unknown as Database),
+} as unknown as Database;
 
 const walletFixture: Wallet = {
   id: 1,
@@ -46,8 +49,21 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
   const findTransferRequestMock = mock<WalletServiceDependencies['findTransferRequest']>(() =>
     Promise.resolve(null),
   );
-  const createTransferRequestMock = mock<WalletServiceDependencies['createTransferRequest']>(() =>
-    Promise.resolve(null),
+  const createTransferRequestMock = mock<WalletServiceDependencies['createTransferRequest']>(
+    (_db, data) =>
+      Promise.resolve({
+        id: 1,
+        userId: data.userId,
+        idempotencyKeyHash: data.idempotencyKeyHash,
+        amount: data.amount,
+        destinationAddress: data.destinationAddress,
+        transactionHash: data.transactionHash ?? null,
+        status: (data.status ?? 'pending'),
+        createdAt: new Date('2024-01-01T00:00:00.000Z'),
+      }),
+  );
+  const updateTransferRequestMock = mock<WalletServiceDependencies['updateTransferRequest']>(() =>
+    Promise.resolve(),
   );
 
   const baseDeps: WalletServiceDependencies = {
@@ -66,6 +82,7 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
     getUsdcDecimals: mock<WalletServiceDependencies['getUsdcDecimals']>(() => Promise.resolve(6)),
     findTransferRequest: findTransferRequestMock,
     createTransferRequest: createTransferRequestMock,
+    updateTransferRequest: updateTransferRequestMock,
   };
 
   const deps: WalletServiceDependencies = { ...baseDeps, ...overrides };
@@ -78,6 +95,7 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
     transferMock,
     findTransferRequestMock,
     createTransferRequestMock,
+    updateTransferRequestMock,
   };
 };
 
@@ -87,6 +105,10 @@ describe('WalletService.transferUsdc', () => {
 
     const result = await service.transferUsdc(mockDb, basePayload, '1');
 
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') {
+      throw new Error('Expected completed transfer');
+    }
     expect(result.transactionHash).toBe('0xtxhash');
     expect(transferMock).toHaveBeenCalled();
     expect(createTransferRequestMock.mock.calls.length).toBe(0);
@@ -176,6 +198,7 @@ describe('WalletService.transferUsdc', () => {
       amount: '1.5',
       destinationAddress: '0x0000000000000000000000000000000000000002',
       transactionHash: '0xcached',
+      status: 'completed' as TransferRequest['status'],
       createdAt: new Date(),
     };
     const findTransferRequestMock = mock<WalletServiceDependencies['findTransferRequest']>(() =>
@@ -187,8 +210,35 @@ describe('WalletService.transferUsdc', () => {
 
     const result = await service.transferUsdc(mockDb, basePayload, '1', 'key');
 
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') {
+      throw new Error('Expected completed status');
+    }
     expect(result.transactionHash).toBe('0xcached');
     expect(findTransferRequestMock).toHaveBeenCalled();
+    expect(createTransferRequestMock.mock.calls.length).toBe(0);
+  });
+
+  test('returns pending when idempotent transfer is already in progress', async () => {
+    const pendingEntry: TransferRequest = {
+      id: 1,
+      userId: 1,
+      idempotencyKeyHash: 'hash',
+      amount: '1.5',
+      destinationAddress: '0x0000000000000000000000000000000000000002',
+      transactionHash: null,
+      status: 'pending',
+      createdAt: new Date(),
+    };
+
+    const { service, transferMock, createTransferRequestMock } = createService({
+      findTransferRequest: mock(() => Promise.resolve(pendingEntry)),
+    });
+
+    const result = await service.transferUsdc(mockDb, basePayload, '1', 'key');
+
+    expect(result.status).toBe('pending');
+    expect(transferMock).not.toHaveBeenCalled();
     expect(createTransferRequestMock.mock.calls.length).toBe(0);
   });
 
@@ -202,8 +252,9 @@ describe('WalletService.transferUsdc', () => {
           amount: '2.0',
           destinationAddress: '0x0000000000000000000000000000000000000002',
           transactionHash: '0xhash',
+          status: 'completed',
           createdAt: new Date(),
-        }),
+        } satisfies TransferRequest),
       ),
     });
 
@@ -213,23 +264,40 @@ describe('WalletService.transferUsdc', () => {
     );
   });
 
-  test('stores idempotency record after successful transfer', async () => {
-    const { service, createTransferRequestMock } = createService();
+  test('persists idempotency reservation and completion after successful transfer', async () => {
+    const { service, createTransferRequestMock, updateTransferRequestMock } = createService();
 
     const result = await service.transferUsdc(mockDb, basePayload, '1', 'key');
 
+    expect(result.status).toBe('completed');
+    if (result.status !== 'completed') {
+      throw new Error('Expected completed status');
+    }
     expect(result.transactionHash).toBe('0xtxhash');
-    const call = createTransferRequestMock.mock.calls[0] as
+
+    expect(createTransferRequestMock.mock.calls.length).toBe(1);
+    const createCall = createTransferRequestMock.mock.calls[0] as
       | Parameters<WalletServiceDependencies['createTransferRequest']>
       | undefined;
-    expect(call).toBeDefined();
-    if (!call) {
+    if (!createCall) {
       throw new Error('Expected createTransferRequest to be called');
     }
-    const [dbArg, payload] = call;
-    expect(dbArg).toBe(mockDb);
-    expect(payload.transactionHash).toBe('0xtxhash');
-    expect(payload.amount).toBe('1.5');
-    expect(typeof payload.idempotencyKeyHash).toBe('string');
+    const [createDb, createPayload] = createCall;
+    expect(createDb).toBeDefined();
+    expect(createPayload.status).toBe('pending');
+    expect(createPayload.transactionHash).toBeNull();
+    expect(typeof createPayload.idempotencyKeyHash).toBe('string');
+
+    expect(updateTransferRequestMock.mock.calls.length).toBe(1);
+    const updateCall = updateTransferRequestMock.mock.calls[0] as
+      | Parameters<WalletServiceDependencies['updateTransferRequest']>
+      | undefined;
+    if (!updateCall) {
+      throw new Error('Expected updateTransferRequest to be called');
+    }
+    const [updateDb, updateId, updatePayload] = updateCall;
+    expect(updateDb).toBe(mockDb);
+    expect(updateId).toBe(1);
+    expect(updatePayload).toEqual({ transactionHash: '0xtxhash', status: 'completed' });
   });
 });

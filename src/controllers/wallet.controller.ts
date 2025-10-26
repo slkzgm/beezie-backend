@@ -24,6 +24,15 @@ export class WalletController {
         idempotencyKey,
       );
 
+      if (result.status === 'pending') {
+        return ctx.json(
+          {
+            message: 'Transfer already in progress',
+          },
+          202,
+        );
+      }
+
       return ctx.json(
         {
           message: 'Transfer initiated',
