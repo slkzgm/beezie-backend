@@ -102,7 +102,7 @@ describe('Wallet routes', () => {
   test('propagates WalletError status codes', async () => {
     const { walletService, WalletError } = await import('@/services/wallet.service');
     spyOn(walletService, 'transferUsdc').mockRejectedValue(
-      new WalletError('Insufficient USDC balance', 400),
+      new WalletError('Insufficient USDC balance', 400, 'insufficient_balance'),
     );
 
     const tokenModule = await import('@/services/token.service');
@@ -127,8 +127,10 @@ describe('Wallet routes', () => {
     });
 
     expect(response.status).toBe(400);
-    const json = (await response.json()) as { message: string };
+    const json = (await response.json()) as { code: string; message: string; requestId?: string };
+    expect(json.code).toBe('insufficient_balance');
     expect(json.message).toBe('Insufficient USDC balance');
+    expect(typeof json.requestId).toBe('string');
   });
 
   test('rejects when payload validation fails', async () => {

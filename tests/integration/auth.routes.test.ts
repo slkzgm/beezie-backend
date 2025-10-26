@@ -46,7 +46,7 @@ describe('Auth routes', () => {
   test('POST /auth/sign-in propagates AuthError status', async () => {
     const { authService, AuthError } = await import('@/services/auth.service');
     spyOn(authService, 'authenticateUser').mockRejectedValue(
-      new AuthError('Invalid credentials', 401),
+      new AuthError('Invalid credentials', 401, 'invalid_credentials'),
     );
 
     const { createApp } = await import('@/app');
@@ -62,8 +62,10 @@ describe('Auth routes', () => {
     });
 
     expect(response.status).toBe(401);
-    const json = (await response.json()) as { message: string };
+    const json = (await response.json()) as { code: string; message: string; requestId?: string };
+    expect(json.code).toBe('invalid_credentials');
     expect(json.message).toBe('Invalid credentials');
+    expect(typeof json.requestId).toBe('string');
   });
 
   test('POST /auth/refresh returns rotated tokens', async () => {
@@ -95,7 +97,7 @@ describe('Auth routes', () => {
   test('POST /auth/refresh propagates AuthError status', async () => {
     const { authService, AuthError } = await import('@/services/auth.service');
     spyOn(authService, 'refreshSession').mockRejectedValue(
-      new AuthError('Invalid refresh token', 401),
+      new AuthError('Invalid refresh token', 401, 'invalid_refresh_token'),
     );
 
     const { createApp } = await import('@/app');
@@ -108,8 +110,10 @@ describe('Auth routes', () => {
     });
 
     expect(response.status).toBe(401);
-    const json = (await response.json()) as { message: string };
+    const json = (await response.json()) as { code: string; message: string; requestId?: string };
+    expect(json.code).toBe('invalid_refresh_token');
     expect(json.message).toBe('Invalid refresh token');
+    expect(typeof json.requestId).toBe('string');
   });
 
   test('POST /auth/sign-up rejects invalid payload', async () => {

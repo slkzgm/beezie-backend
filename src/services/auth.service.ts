@@ -26,11 +26,13 @@ const isDuplicateEntryError = (error: unknown): boolean => {
 
 export class AuthError extends Error {
   readonly status: ContentfulStatusCode;
+  readonly code: string;
 
-  constructor(message: string, status: ContentfulStatusCode) {
+  constructor(message: string, status: ContentfulStatusCode, code = 'auth_error') {
     super(message);
     this.name = 'AuthError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -62,7 +64,7 @@ export class AuthService {
     const existingUser = await usersRepository.findUserByEmail(db, email);
 
     if (existingUser) {
-      throw new AuthError('Email is already registered', 409);
+      throw new AuthError('Email is already registered', 409, 'user_already_exists');
     }
 
     const passwordHash = await hashPassword(password);
@@ -78,7 +80,7 @@ export class AuthService {
         });
 
         if (!createdUser) {
-          throw new AuthError('Failed to create user', 500);
+          throw new AuthError('Failed to create user', 500, 'user_creation_failed');
         }
 
         const createdWallet = await walletsRepository.createWallet(tx, {
@@ -88,7 +90,7 @@ export class AuthService {
         });
 
         if (!createdWallet) {
-          throw new AuthError('Failed to create wallet', 500);
+          throw new AuthError('Failed to create wallet', 500, 'wallet_creation_failed');
         }
 
         const issuedTokens = await tokenService.issueTokens(createdUser.id);
@@ -127,9 +129,9 @@ export class AuthService {
         throw error;
       }
       if (isDuplicateEntryError(error)) {
-        throw new AuthError('Email is already registered', 409);
+        throw new AuthError('Email is already registered', 409, 'user_already_exists');
       }
-      throw new AuthError('Unable to register user', 500);
+      throw new AuthError('Unable to register user', 500, 'registration_failed');
     }
   }
 
@@ -141,12 +143,12 @@ export class AuthService {
     const user = await usersRepository.findUserByEmail(db, email);
 
     if (!user) {
-      throw new AuthError('Invalid credentials', 401);
+      throw new AuthError('Invalid credentials', 401, 'invalid_credentials');
     }
 
     const passwordMatches = await verifyPassword(password, user.passwordHash);
     if (!passwordMatches) {
-      throw new AuthError('Invalid credentials', 401);
+      throw new AuthError('Invalid credentials', 401, 'invalid_credentials');
     }
 
     const { issuedTokens, refreshExpiresAt } = await withTransaction(db, async (tx) => {
@@ -186,12 +188,12 @@ export class AuthService {
       const verified = await tokenService.verifyRefreshToken(refreshToken);
 
       if (!verified || !verified.sub) {
-        throw new AuthError('Invalid refresh token', 401);
+        throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
       }
 
       const userId = Number(verified.sub);
       if (!Number.isInteger(userId) || userId <= 0) {
-        throw new AuthError('Invalid refresh token', 401);
+        throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
       }
 
       const refreshHash = sha256Hex(refreshToken);
@@ -200,18 +202,18 @@ export class AuthService {
         const storedToken = await refreshTokensRepository.findRefreshTokenByHash(tx, refreshHash);
 
         if (!storedToken) {
-          throw new AuthError('Invalid refresh token', 401);
+          throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
         }
 
         if (storedToken.expiresAt.getTime() <= Date.now()) {
           await refreshTokensRepository.deleteRefreshToken(tx, refreshHash);
-          throw new AuthError('Refresh token expired', 401);
+          throw new AuthError('Refresh token expired', 401, 'refresh_token_expired');
         }
 
         const userRecord = await usersRepository.findUserById(tx, userId);
         if (!userRecord) {
           await refreshTokensRepository.deleteRefreshToken(tx, refreshHash);
-          throw new AuthError('Invalid refresh token', 401);
+          throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
         }
 
         const tokens = await tokenService.issueTokens(userRecord.id);
@@ -242,7 +244,7 @@ export class AuthService {
         throw error;
       }
 
-      throw new AuthError('Unable to refresh session', 500);
+      throw new AuthError('Unable to refresh session', 500, 'refresh_failed');
     }
   }
 }

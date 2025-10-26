@@ -18,11 +18,13 @@ const logger = createLogger('wallet-service');
 
 export class WalletError extends Error {
   readonly status: ContentfulStatusCode;
+  readonly code: string;
 
-  constructor(message: string, status: ContentfulStatusCode) {
+  constructor(message: string, status: ContentfulStatusCode, code = 'wallet_error') {
     super(message);
     this.name = 'WalletError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -72,18 +74,18 @@ export class WalletService {
     });
 
     if (!userId) {
-      throw new WalletError('Unauthorized', 401);
+      throw new WalletError('Unauthorized', 401, 'unauthorized');
     }
 
     const numericUserId = Number(userId);
     if (!Number.isInteger(numericUserId) || numericUserId <= 0) {
-      throw new WalletError('Invalid user identifier', 400);
+      throw new WalletError('Invalid user identifier', 400, 'invalid_user_id');
     }
 
     const walletRecord = await this.deps.findWalletByUserId(db, numericUserId);
 
     if (!walletRecord) {
-      throw new WalletError('Wallet not found for user', 404);
+      throw new WalletError('Wallet not found for user', 404, 'wallet_not_found');
     }
 
     const idempotencyKeyHash = idempotencyKey ? sha256Hex(idempotencyKey) : undefined;
@@ -116,7 +118,7 @@ export class WalletService {
           });
 
           if (!created) {
-            throw new WalletError('Failed to reserve transfer request', 500);
+            throw new WalletError('Failed to reserve transfer request', 500, 'idempotency_reservation_failed');
           }
 
           return { record: created, created: true } as const;
@@ -128,7 +130,7 @@ export class WalletService {
               idempotencyKeyHash,
             );
             if (!concurrent) {
-              throw new WalletError('Failed to reserve transfer request', 500);
+              throw new WalletError('Failed to reserve transfer request', 500, 'idempotency_reservation_failed');
             }
 
             this.ensureMatchingIdempotentPayload(
@@ -174,7 +176,7 @@ export class WalletService {
       const balance = await usdcContract.balanceOf(walletRecord.address);
 
       if (balance < baseAmount) {
-        throw new WalletError('Insufficient USDC balance', 400);
+        throw new WalletError('Insufficient USDC balance', 400, 'insufficient_balance');
       }
 
       const tx = await usdcContract.transfer(payload.destinationAddress, baseAmount);
@@ -208,7 +210,7 @@ export class WalletService {
 
   private mapContractError(reason: unknown): WalletError {
     if (!(reason instanceof Error)) {
-      return new WalletError('Failed to transfer tokens', 500);
+      return new WalletError('Failed to transfer tokens', 500, 'wallet_internal_error');
     }
 
     const message = reason.message ?? '';
@@ -216,26 +218,30 @@ export class WalletService {
     const errorCode = this.extractHttpStatus(reason);
 
     if (lowerMessage.includes('erc20invalidreceiver')) {
-      return new WalletError('Destination address is invalid for USDC transfers', 400);
+      return new WalletError(
+        'Destination address is invalid for USDC transfers',
+        400,
+        'invalid_destination_address',
+      );
     }
 
     if (lowerMessage.includes('insufficientallowance')) {
-      return new WalletError('Insufficient allowance for USDC transfer', 400);
+      return new WalletError('Insufficient allowance for USDC transfer', 400, 'insufficient_allowance');
     }
 
     if (lowerMessage.includes('caller is not the spender')) {
-      return new WalletError('Caller must be approved to spend USDC', 400);
+      return new WalletError('Caller must be approved to spend USDC', 400, 'spender_not_approved');
     }
 
     if (lowerMessage.includes('nonce too low')) {
-      return new WalletError('Transaction nonce too low for wallet', 400);
+      return new WalletError('Transaction nonce too low for wallet', 400, 'nonce_too_low');
     }
 
     if (
       lowerMessage.includes('replacement transaction underpriced') ||
       lowerMessage.includes('replacement fee too low')
     ) {
-      return new WalletError('Replacement transaction fee too low', 400);
+      return new WalletError('Replacement transaction fee too low', 400, 'replacement_fee_too_low');
     }
 
     if (
@@ -243,7 +249,7 @@ export class WalletService {
       lowerMessage.includes('rate limit') ||
       lowerMessage.includes('too many requests')
     ) {
-      return new WalletError('Flow network rate limited, please retry later', 429);
+      return new WalletError('Flow network rate limited, please retry later', 429, 'rate_limited');
     }
 
     if (
@@ -252,14 +258,14 @@ export class WalletService {
       lowerMessage.includes('service unavailable') ||
       lowerMessage.includes('gateway timeout')
     ) {
-      return new WalletError('Flow network unavailable, please retry later', 504);
+      return new WalletError('Flow network unavailable, please retry later', 504, 'provider_unavailable');
     }
 
     if (lowerMessage.includes('timeout') || lowerMessage.includes('network error')) {
-      return new WalletError('Flow network timeout, please retry later', 504);
+      return new WalletError('Flow network timeout, please retry later', 504, 'provider_timeout');
     }
 
-    return new WalletError('Failed to transfer tokens', 500);
+    return new WalletError('Failed to transfer tokens', 500, 'wallet_internal_error');
   }
 
   private extractHttpStatus(reason: Error): number | undefined {
@@ -299,7 +305,7 @@ export class WalletService {
       existing.amount !== expectedAmount ||
       existing.destinationAddress.toLowerCase() !== destinationAddress.toLowerCase()
     ) {
-      throw new WalletError('Idempotency key already used with different payload', 409);
+      throw new WalletError('Idempotency key already used with different payload', 409, 'idempotency_conflict');
     }
   }
 

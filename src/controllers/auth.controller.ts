@@ -4,6 +4,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv } from '@/types/app';
 import type { RefreshInput, SignInInput, SignUpInput } from '@/schemas/auth.schema';
 import { createLogger } from '@/utils/logger';
+import { sendErrorResponse } from '@/utils/http';
 import { authService, AuthError } from '@/services/auth.service';
 
 const logger = createLogger('auth-controller');
@@ -17,12 +18,12 @@ export class AuthController {
       const result = await authService.registerUser(db, payload);
       return ctx.json(result, 201);
     } catch (error: unknown) {
-      logger.error('Sign-up failed', error instanceof Error ? error : { error });
-      const responseStatus: ContentfulStatusCode = error instanceof AuthError ? error.status : 500;
-      ctx.status(responseStatus);
-      return ctx.json({
-        message: error instanceof Error ? error.message : 'Unable to complete sign up',
-      });
+      const safeError = error instanceof Error ? error : new Error('Unknown sign-up error');
+      logger.error('Sign-up failed', safeError);
+      const responseStatus: ContentfulStatusCode = safeError instanceof AuthError ? safeError.status : 500;
+      const code = safeError instanceof AuthError ? safeError.code : 'internal_error';
+      const message = safeError.message ?? 'Unable to complete sign up';
+      return sendErrorResponse(ctx, responseStatus, code, message);
     }
   }
 
@@ -35,12 +36,12 @@ export class AuthController {
 
       return ctx.json(result);
     } catch (error: unknown) {
-      logger.error('Sign-in failed', error instanceof Error ? error : { error });
-      const responseStatus: ContentfulStatusCode = error instanceof AuthError ? error.status : 500;
-      ctx.status(responseStatus);
-      return ctx.json({
-        message: error instanceof Error ? error.message : 'Unable to sign in',
-      });
+      const safeError = error instanceof Error ? error : new Error('Unknown sign-in error');
+      logger.error('Sign-in failed', safeError);
+      const responseStatus: ContentfulStatusCode = safeError instanceof AuthError ? safeError.status : 500;
+      const code = safeError instanceof AuthError ? safeError.code : 'internal_error';
+      const message = safeError.message ?? 'Unable to sign in';
+      return sendErrorResponse(ctx, responseStatus, code, message);
     }
   }
 
@@ -52,12 +53,12 @@ export class AuthController {
       const result = await authService.refreshSession(db, payload.refreshToken);
       return ctx.json(result);
     } catch (error: unknown) {
-      logger.error('Refresh failed', error instanceof Error ? error : { error });
-      const responseStatus: ContentfulStatusCode = error instanceof AuthError ? error.status : 500;
-      ctx.status(responseStatus);
-      return ctx.json({
-        message: error instanceof Error ? error.message : 'Unable to refresh session',
-      });
+      const safeError = error instanceof Error ? error : new Error('Unknown refresh error');
+      logger.error('Refresh failed', safeError);
+      const responseStatus: ContentfulStatusCode = safeError instanceof AuthError ? safeError.status : 500;
+      const code = safeError instanceof AuthError ? safeError.code : 'internal_error';
+      const message = safeError.message ?? 'Unable to refresh session';
+      return sendErrorResponse(ctx, responseStatus, code, message);
     }
   }
 }

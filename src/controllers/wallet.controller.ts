@@ -1,9 +1,11 @@
 import type { Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 import type { AppEnv } from '@/types/app';
 import type { TransferInput } from '@/schemas/wallet.schema';
 import { createLogger } from '@/utils/logger';
 import { walletService, WalletError } from '@/services/wallet.service';
+import { sendErrorResponse } from '@/utils/http';
 
 const logger = createLogger('wallet-controller');
 
@@ -41,12 +43,12 @@ export class WalletController {
         202,
       );
     } catch (error: unknown) {
-      logger.error('USDC transfer failed', error instanceof Error ? error : { error });
-      const status = error instanceof WalletError ? error.status : 500;
-      ctx.status(status);
-      return ctx.json({
-        message: error instanceof Error ? error.message : 'Unable to process transfer',
-      });
+      const safeError = error instanceof Error ? error : new Error('Unknown wallet error');
+      logger.error('USDC transfer failed', safeError);
+      const status: ContentfulStatusCode = safeError instanceof WalletError ? safeError.status : 500;
+      const code = safeError instanceof WalletError ? safeError.code : 'internal_error';
+      const message = safeError.message ?? 'Unable to process transfer';
+      return sendErrorResponse(ctx, status, code, message);
     }
   }
 }
