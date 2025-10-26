@@ -55,7 +55,7 @@ const defaultDependencies: WalletServiceDependencies = {
   findTransferRequest: transferRequestsRepository.findByUserAndKeyHash,
   createTransferRequest: transferRequestsRepository.createTransferRequest,
   updateTransferRequest: transferRequestsRepository.updateTransferRequest,
-}; 
+};
 
 export class WalletService {
   constructor(private readonly deps: WalletServiceDependencies = defaultDependencies) {}

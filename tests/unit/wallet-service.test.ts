@@ -19,8 +19,7 @@ const basePayload: TransferInput = {
 };
 
 const mockDb = {
-  transaction: <T>(handler: (tx: Database) => Promise<T>) =>
-    handler({} as unknown as Database),
+  transaction: <T>(handler: (tx: Database) => Promise<T>) => handler({} as unknown as Database),
 } as unknown as Database;
 
 const walletFixture: Wallet = {
@@ -58,7 +57,7 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
         amount: data.amount,
         destinationAddress: data.destinationAddress,
         transactionHash: data.transactionHash ?? null,
-        status: (data.status ?? 'pending'),
+        status: data.status ?? 'pending',
         createdAt: new Date('2024-01-01T00:00:00.000Z'),
       }),
   );
@@ -188,9 +187,7 @@ describe('WalletService.transferUsdc', () => {
       getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
         makeContract({
           balanceOf: mock(() => Promise.resolve(2_000_000n)),
-          transfer: mock(() =>
-            Promise.reject(new Error('replacement transaction underpriced')),
-          ),
+          transfer: mock(() => Promise.reject(new Error('replacement transaction underpriced'))),
         }),
       ),
     });
