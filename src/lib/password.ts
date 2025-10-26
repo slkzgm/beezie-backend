@@ -13,8 +13,8 @@ export const hashPassword = async (plainPassword: string): Promise<string> => {
 
   try {
     return await bcrypt.hash(plainPassword, SALT_ROUNDS);
-  } catch (error) {
-    logger.error('Failed to hash password', error);
+  } catch (error: unknown) {
+    logger.error('Failed to hash password', error instanceof Error ? error : { error });
     throw new Error('Unable to hash password');
   }
 };
@@ -29,8 +29,8 @@ export const verifyPassword = async (
 
   try {
     return await bcrypt.compare(plainPassword, passwordHash);
-  } catch (error) {
-    logger.error('Failed to verify password', error);
+  } catch (error: unknown) {
+    logger.error('Failed to verify password', error instanceof Error ? error : { error });
     return false;
   }
 };
