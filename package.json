@@ -5,7 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build ./src/index.ts --outdir ./dist --target bun",
+    "build": "bun build ./src/index.ts --outfile ./dist/index.js --target bun",
     "start": "bun run dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"scripts/**/*.ts\" \"tests/**/*.ts\"",
@@ -45,7 +45,7 @@
     "zod": "^4.1.12"
   },
   "lint-staged": {
-    "src/**/*.ts": [
+    "{src,scripts,tests}/**/*.ts": [
       "eslint --fix",
       "prettier --write"
     ]
