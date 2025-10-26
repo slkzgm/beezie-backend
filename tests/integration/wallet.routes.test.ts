@@ -95,6 +95,7 @@ describe('Wallet routes', () => {
     });
 
     expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
   });
 
   test('propagates WalletError status codes', async () => {

@@ -8,6 +8,7 @@ export const authGuard = async (ctx: Context<AppEnv>, next: Next) => {
 
   if (!authorization?.startsWith('Bearer ')) {
     ctx.status(401);
+    ctx.header('WWW-Authenticate', 'Bearer error="invalid_request"');
     return ctx.json({ error: 'Authorization header missing or malformed' });
   }
 
@@ -17,6 +18,7 @@ export const authGuard = async (ctx: Context<AppEnv>, next: Next) => {
 
   if (!payload?.sub) {
     ctx.status(401);
+    ctx.header('WWW-Authenticate', 'Bearer error="invalid_token"');
     return ctx.json({ error: 'Invalid or expired access token' });
   }
 
