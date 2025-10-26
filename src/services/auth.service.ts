@@ -51,7 +51,6 @@ type SignUpResult = {
   email: string;
   displayName: string | null;
   walletAddress: string;
-  mnemonic?: string;
 } & AuthTokens;
 
 export class AuthService {
@@ -118,7 +117,6 @@ export class AuthService {
         email: userAndWallet.createdUser.email,
         displayName: userAndWallet.createdUser.displayName ?? null,
         walletAddress: userAndWallet.createdWallet.address,
-        mnemonic: wallet.mnemonic?.phrase,
         accessToken: userAndWallet.issuedTokens.accessToken,
         refreshToken: userAndWallet.issuedTokens.refreshToken,
         refreshTokenExpiresAt: userAndWallet.refreshExpiresAt.toISOString(),

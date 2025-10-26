@@ -37,8 +37,9 @@ describe('Auth routes', () => {
     });
 
     expect(response.status).toBe(201);
-    const json = (await response.json()) as { email: string };
+    const json = (await response.json()) as Record<string, unknown>;
     expect(json.email).toBe('user@example.com');
+    expect(json).not.toHaveProperty('mnemonic');
     expect(registerSpy).toHaveBeenCalled();
   });
 
