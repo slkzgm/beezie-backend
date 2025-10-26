@@ -9,6 +9,7 @@ import { walletRouter } from '@/routes/wallet.route';
 import { getDb } from '@/db/client';
 import type { AppEnv } from '@/types/app';
 import { env } from '@/config/env';
+import { runWithLoggerContext } from '@/utils/logger';
 
 export const createApp = () => {
   const app = new Hono<AppEnv>();
@@ -30,8 +31,12 @@ export const createApp = () => {
 
   app.use('*', async (ctx, next) => {
     const { db } = getDb();
+    const correlationId = crypto.randomUUID();
     ctx.set('db', db);
-    await next();
+    ctx.set('correlationId', correlationId);
+    ctx.res.headers.set('X-Request-ID', correlationId);
+
+    await runWithLoggerContext({ correlationId }, next);
   });
 
   app.get('/health', (ctx) =>

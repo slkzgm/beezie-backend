@@ -1,4 +1,12 @@
+import { AsyncLocalStorage } from 'async_hooks';
+
 import { env } from '@/config/env';
+
+type LoggerContext = {
+  correlationId?: string;
+};
+
+const contextStorage = new AsyncLocalStorage<LoggerContext>();
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -14,11 +22,17 @@ const currentLevel = () => env.logging.level;
 const shouldLog = (level: LogLevel) =>
   levelWeights[level] >= (levelWeights[currentLevel() as LogLevel] ?? 20);
 
-const basePayload = (namespace: string, level: LogLevel) => ({
-  namespace,
-  level,
-  timestamp: new Date().toISOString(),
-});
+const basePayload = (namespace: string, level: LogLevel) => {
+  const activeContext = contextStorage.getStore();
+  return {
+    namespace,
+    level,
+    timestamp: new Date().toISOString(),
+    ...(activeContext?.correlationId
+      ? { correlationId: activeContext.correlationId }
+      : {}),
+  };
+};
 
 const normalizePayload = (payload?: unknown): Record<string, unknown> => {
   if (!payload) {
@@ -70,3 +84,7 @@ export const createLogger = (namespace: string) => ({
     });
   },
 });
+
+export const runWithLoggerContext = <T>(context: LoggerContext, fn: () => Promise<T> | T) => {
+  return contextStorage.run(context, fn);
+};

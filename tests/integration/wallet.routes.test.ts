@@ -42,6 +42,7 @@ describe('Wallet routes', () => {
     expect(response.status).toBe(202);
     const json = (await response.json()) as { transactionHash: string };
     expect(json.transactionHash).toBe('0xtx');
+    expect(response.headers.get('x-request-id')).toBeTruthy();
   });
 
   test('POST /wallet/transfer surfaces pending status', async () => {
