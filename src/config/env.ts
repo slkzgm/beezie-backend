@@ -17,7 +17,7 @@ const envSchema = z.object({
   FLOW_USDC_CONTRACT_ADDRESS: z
     .string()
     .length(42, 'USDC contract address must be a valid EVM-style address'),
-  FLOW_NETWORK: z.enum(['testnet', 'mainnet-beta']).default('testnet'),
+  FLOW_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

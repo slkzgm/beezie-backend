@@ -12,15 +12,19 @@ let cachedUsdcDecimals: number | null = null;
 const getProvider = (): JsonRpcProvider => {
   if (!provider) {
     logger.debug('Creating Flow EVM provider', { url: env.flow.accessApi });
-    provider = new JsonRpcProvider(env.flow.accessApi);
+    provider = new JsonRpcProvider(env.flow.accessApi, undefined, { staticNetwork: undefined });
   }
 
   return provider;
 };
 
-export const generateDeterministicWallet = (entropy?: string) => {
-  logger.debug('Generating wallet from entropy');
-  return entropy ? Wallet.fromPhrase(entropy) : Wallet.createRandom();
+export const generateWallet = (mnemonicPhrase?: string) => {
+  logger.debug('Generating wallet', { derived: Boolean(mnemonicPhrase) });
+  if (mnemonicPhrase) {
+    return Wallet.fromPhrase(mnemonicPhrase);
+  }
+
+  return Wallet.createRandom();
 };
 
 export const getWalletSigner = (privateKey: string): Signer => {
