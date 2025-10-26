@@ -25,6 +25,7 @@ const envSchema = z.object({
     .length(42, 'USDC contract address must be a valid EVM-style address'),
   FLOW_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  CORS_ALLOWED_ORIGINS: z.string().default('*'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -62,5 +63,8 @@ export const env = {
   },
   logging: {
     level: data.LOG_LEVEL,
+  },
+  http: {
+    corsAllowedOrigins: data.CORS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()),
   },
 } as const;
