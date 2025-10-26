@@ -1,3 +1,5 @@
+import { env } from '@/config/env';
+
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const levelWeights: Record<LogLevel, number> = {
@@ -7,7 +9,7 @@ const levelWeights: Record<LogLevel, number> = {
   error: 40,
 };
 
-const currentLevel = () => process.env.LOG_LEVEL ?? 'info';
+const currentLevel = () => env.logging.level;
 
 const shouldLog = (level: LogLevel) =>
   levelWeights[level] >= (levelWeights[currentLevel() as LogLevel] ?? 20);
