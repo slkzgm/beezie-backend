@@ -34,3 +34,10 @@ describe('cryptoManager', () => {
     );
   });
 });
+
+  test('decrypts legacy v1 payloads', async () => {
+    const cryptoManager = await getCryptoManager();
+    const legacyPayload = 'Vj04Q7ov7vs9k62i.itY/NQDq4J8x7MBGCa9UJw==.wo5MrZsn8uQ4iLbRaybVMcs=';
+    const decrypted = await cryptoManager.decryptPrivateKey(legacyPayload);
+    expect(decrypted).toBe('legacy-secret-key');
+  });
