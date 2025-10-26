@@ -64,4 +64,63 @@ describe('Auth routes', () => {
     const json = (await response.json()) as { message: string };
     expect(json.message).toBe('Invalid credentials');
   });
+
+  test('POST /auth/refresh returns rotated tokens', async () => {
+    const { authService } = await import('@/services/auth.service');
+    const refreshSpy = spyOn(authService, 'refreshSession').mockResolvedValue({
+      userId: 1,
+      email: 'user@example.com',
+      displayName: 'User',
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      refreshTokenExpiresAt: new Date().toISOString(),
+    });
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: 'old-refresh-token' }),
+    });
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as { accessToken: string };
+    expect(json.accessToken).toBe('new-access-token');
+    expect(refreshSpy).toHaveBeenCalled();
+  });
+
+  test('POST /auth/refresh propagates AuthError status', async () => {
+    const { authService, AuthError } = await import('@/services/auth.service');
+    spyOn(authService, 'refreshSession').mockRejectedValue(
+      new AuthError('Invalid refresh token', 401),
+    );
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: 'invalid' }),
+    });
+
+    expect(response.status).toBe(401);
+    const json = (await response.json()) as { message: string };
+    expect(json.message).toBe('Invalid refresh token');
+  });
+
+  test('POST /auth/sign-up rejects invalid payload', async () => {
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/auth/sign-up', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'invalid', password: 'short', passwordConfirmation: 'short' }),
+    });
+
+    expect(response.status).toBe(400);
+  });
 });

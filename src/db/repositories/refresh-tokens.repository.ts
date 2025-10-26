@@ -12,24 +12,24 @@ export const createRefreshToken = async (
   data: NewRefreshTokenRecord,
 ): Promise<RefreshTokenRecord | null> => {
   await db.insert(refreshTokens).values(data);
-  return findRefreshTokenByToken(db, data.token);
+  return findRefreshTokenByHash(db, data.tokenHash);
 };
 
-export const findRefreshTokenByToken = async (
+export const findRefreshTokenByHash = async (
   db: Database,
-  token: string,
+  tokenHash: string,
 ): Promise<RefreshTokenRecord | null> => {
   const [refreshToken] = await db
     .select()
     .from(refreshTokens)
-    .where(eq(refreshTokens.token, token))
+    .where(eq(refreshTokens.tokenHash, tokenHash))
     .limit(1);
 
   return refreshToken ?? null;
 };
 
-export const deleteRefreshToken = async (db: Database, token: string): Promise<boolean> => {
-  const result = await db.delete(refreshTokens).where(eq(refreshTokens.token, token));
+export const deleteRefreshToken = async (db: Database, tokenHash: string): Promise<boolean> => {
+  const result = await db.delete(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash));
   return getAffectedRows(result) > 0;
 };
 

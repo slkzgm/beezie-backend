@@ -1,18 +1,28 @@
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 import { createLogger } from '@/utils/logger';
-import type { SignInInput, SignUpInput } from '@/schemas/auth.schema';
+import type { RefreshInput, SignInInput, SignUpInput } from '@/schemas/auth.schema';
 import { hashPassword, verifyPassword } from '@/lib/password';
 import { cryptoManager } from '@/lib/crypto';
-import { generateDeterministicWallet } from '@/lib/ethers';
+import { generateWallet } from '@/lib/ethers';
 import { users as usersRepository } from '@/db/repositories';
 import { wallets as walletsRepository } from '@/db/repositories';
 import { refreshTokens as refreshTokensRepository } from '@/db/repositories';
 import { withTransaction } from '@/db/repositories';
 import type { Database } from '@/db/types';
 import { tokenService } from '@/services/token.service';
+import { sha256Hex } from '@/utils/hash';
 
 const logger = createLogger('auth-service');
+
+const isDuplicateEntryError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const mysqlError = error as { code?: string; errno?: number };
+  return mysqlError.code === 'ER_DUP_ENTRY' || mysqlError.errno === 1062;
+};
 
 export class AuthError extends Error {
   readonly status: ContentfulStatusCode;
@@ -41,6 +51,7 @@ type SignUpResult = {
   email: string;
   displayName: string | null;
   walletAddress: string;
+  mnemonic?: string;
 } & AuthTokens;
 
 export class AuthService {
@@ -56,7 +67,7 @@ export class AuthService {
     }
 
     const passwordHash = await hashPassword(password);
-    const wallet = generateDeterministicWallet();
+    const wallet = generateWallet();
     const encryptedPrivateKey = await cryptoManager.encryptPrivateKey(wallet.privateKey);
 
     try {
@@ -86,9 +97,11 @@ export class AuthService {
 
         await refreshTokensRepository.deleteRefreshTokensByUserId(tx, createdUser.id);
 
+        const refreshTokenHash = sha256Hex(issuedTokens.refreshToken);
+
         await refreshTokensRepository.createRefreshToken(tx, {
           userId: createdUser.id,
-          token: issuedTokens.refreshToken,
+          tokenHash: refreshTokenHash,
           expiresAt: refreshExpiresAt,
         });
 
@@ -105,14 +118,18 @@ export class AuthService {
         email: userAndWallet.createdUser.email,
         displayName: userAndWallet.createdUser.displayName ?? null,
         walletAddress: userAndWallet.createdWallet.address,
+        mnemonic: wallet.mnemonic?.phrase,
         accessToken: userAndWallet.issuedTokens.accessToken,
         refreshToken: userAndWallet.issuedTokens.refreshToken,
         refreshTokenExpiresAt: userAndWallet.refreshExpiresAt.toISOString(),
       };
-    } catch (error) {
-      logger.error('Failed to register user', error);
+    } catch (error: unknown) {
+      logger.error('Failed to register user', error instanceof Error ? error : { error });
       if (error instanceof AuthError) {
         throw error;
+      }
+      if (isDuplicateEntryError(error)) {
+        throw new AuthError('Email is already registered', 409);
       }
       throw new AuthError('Unable to register user', 500);
     }
@@ -140,9 +157,11 @@ export class AuthService {
 
       await refreshTokensRepository.deleteRefreshTokensByUserId(tx, user.id);
 
+      const refreshTokenHash = sha256Hex(tokens.refreshToken);
+
       await refreshTokensRepository.createRefreshToken(tx, {
         userId: user.id,
-        token: tokens.refreshToken,
+        tokenHash: refreshTokenHash,
         expiresAt: refreshExpiresAt,
       });
 
@@ -157,6 +176,76 @@ export class AuthService {
       refreshToken: issuedTokens.refreshToken,
       refreshTokenExpiresAt: refreshExpiresAt.toISOString(),
     };
+  }
+
+  async refreshSession(
+    db: Database,
+    refreshToken: RefreshInput['refreshToken'],
+  ): Promise<SignInResult> {
+    logger.debug('refreshSession invoked');
+
+    try {
+      const verified = await tokenService.verifyRefreshToken(refreshToken);
+
+      if (!verified || !verified.sub) {
+        throw new AuthError('Invalid refresh token', 401);
+      }
+
+      const userId = Number(verified.sub);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        throw new AuthError('Invalid refresh token', 401);
+      }
+
+      const refreshHash = sha256Hex(refreshToken);
+
+      const { user, issuedTokens, refreshExpiresAt } = await withTransaction(db, async (tx) => {
+        const storedToken = await refreshTokensRepository.findRefreshTokenByHash(tx, refreshHash);
+
+        if (!storedToken) {
+          throw new AuthError('Invalid refresh token', 401);
+        }
+
+        if (storedToken.expiresAt.getTime() <= Date.now()) {
+          await refreshTokensRepository.deleteRefreshToken(tx, refreshHash);
+          throw new AuthError('Refresh token expired', 401);
+        }
+
+        const userRecord = await usersRepository.findUserById(tx, userId);
+        if (!userRecord) {
+          await refreshTokensRepository.deleteRefreshToken(tx, refreshHash);
+          throw new AuthError('Invalid refresh token', 401);
+        }
+
+        const tokens = await tokenService.issueTokens(userRecord.id);
+        const refreshExpiresAt = new Date(tokens.refreshPayload.exp * 1000);
+
+        await refreshTokensRepository.deleteRefreshTokensByUserId(tx, userRecord.id);
+
+        await refreshTokensRepository.createRefreshToken(tx, {
+          userId: userRecord.id,
+          tokenHash: sha256Hex(tokens.refreshToken),
+          expiresAt: refreshExpiresAt,
+        });
+
+        return { user: userRecord, issuedTokens: tokens, refreshExpiresAt };
+      });
+
+      return {
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName ?? null,
+        accessToken: issuedTokens.accessToken,
+        refreshToken: issuedTokens.refreshToken,
+        refreshTokenExpiresAt: refreshExpiresAt.toISOString(),
+      };
+    } catch (error: unknown) {
+      logger.error('Failed to refresh session', error instanceof Error ? error : { error });
+      if (error instanceof AuthError) {
+        throw error;
+      }
+
+      throw new AuthError('Unable to refresh session', 500);
+    }
   }
 }
 export const authService = new AuthService();

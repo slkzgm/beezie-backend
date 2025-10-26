@@ -113,8 +113,8 @@ export class TokenService {
       }
 
       return payload as VerifiedTokenPayload;
-    } catch (error) {
-      logger.warn('Access token verification failed', error);
+    } catch (error: unknown) {
+      logger.warn('Access token verification failed', error instanceof Error ? error : { error });
       return null;
     }
   }
@@ -138,8 +138,8 @@ export class TokenService {
       }
 
       return payload as RefreshTokenPayload;
-    } catch (error) {
-      logger.warn('Refresh token verification failed', error);
+    } catch (error: unknown) {
+      logger.warn('Refresh token verification failed', error instanceof Error ? error : { error });
       return null;
     }
   }
