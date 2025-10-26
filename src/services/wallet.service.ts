@@ -209,6 +209,7 @@ export class WalletService {
 
     const message = reason.message ?? '';
     const lowerMessage = message.toLowerCase();
+    const errorCode = this.extractHttpStatus(reason);
 
     if (lowerMessage.includes('erc20invalidreceiver')) {
       return new WalletError('Destination address is invalid for USDC transfers', 400);
@@ -222,11 +223,67 @@ export class WalletService {
       return new WalletError('Caller must be approved to spend USDC', 400);
     }
 
+    if (lowerMessage.includes('nonce too low')) {
+      return new WalletError('Transaction nonce too low for wallet', 400);
+    }
+
+    if (
+      lowerMessage.includes('replacement transaction underpriced') ||
+      lowerMessage.includes('replacement fee too low')
+    ) {
+      return new WalletError('Replacement transaction fee too low', 400);
+    }
+
+    if (
+      errorCode === 429 ||
+      lowerMessage.includes('rate limit') ||
+      lowerMessage.includes('too many requests')
+    ) {
+      return new WalletError('Flow network rate limited, please retry later', 429);
+    }
+
+    if (
+      (errorCode && [502, 503, 504].includes(errorCode)) ||
+      lowerMessage.includes('bad gateway') ||
+      lowerMessage.includes('service unavailable') ||
+      lowerMessage.includes('gateway timeout')
+    ) {
+      return new WalletError('Flow network unavailable, please retry later', 504);
+    }
+
     if (lowerMessage.includes('timeout') || lowerMessage.includes('network error')) {
       return new WalletError('Flow network timeout, please retry later', 504);
     }
 
     return new WalletError('Failed to transfer tokens', 500);
+  }
+
+  private extractHttpStatus(reason: Error): number | undefined {
+    const visited = new Set<unknown>();
+
+    const inspect = (value: unknown): number | undefined => {
+      if (!value || typeof value !== 'object' || visited.has(value)) {
+        return undefined;
+      }
+
+      visited.add(value);
+      const record = value as Record<string, unknown>;
+
+      for (const key of ['status', 'statusCode', 'code']) {
+        const candidate = record[key];
+        if (typeof candidate === 'number') {
+          return candidate;
+        }
+      }
+
+      if (record.error) {
+        return inspect(record.error);
+      }
+
+      return undefined;
+    };
+
+    return inspect(reason);
   }
 
   private ensureMatchingIdempotentPayload(

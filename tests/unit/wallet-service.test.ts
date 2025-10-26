@@ -169,6 +169,70 @@ describe('WalletService.transferUsdc', () => {
     return expect(transferPromise).rejects.toThrow('Insufficient allowance for USDC transfer');
   });
 
+  test('maps nonce too low errors to 400', () => {
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(new Error('nonce too low'))),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
+    return expect(transferPromise).rejects.toThrow('Transaction nonce too low for wallet');
+  });
+
+  test('maps replacement transaction fee errors to 400', () => {
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() =>
+            Promise.reject(new Error('replacement transaction underpriced')),
+          ),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
+    return expect(transferPromise).rejects.toThrow('Replacement transaction fee too low');
+  });
+
+  test('maps rate limit errors to 429', () => {
+    const rateLimitError = new Error('Too many requests');
+    (rateLimitError as Error & { code: number }).code = 429;
+
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(rateLimitError)),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
+    return expect(transferPromise).rejects.toThrow('Flow network rate limited, please retry later');
+  });
+
+  test('maps upstream availability errors to 504', () => {
+    const upstreamError = new Error('Bad Gateway');
+    (upstreamError as Error & { status: number }).status = 502;
+
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(upstreamError)),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
+    return expect(transferPromise).rejects.toThrow('Flow network unavailable, please retry later');
+  });
+
   test('maps timeout errors to 504', () => {
     const { service } = createService({
       getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
