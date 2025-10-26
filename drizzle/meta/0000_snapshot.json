@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "9b40e9db-33c9-4f38-bc38-7fe2c187745e",
+  "id": "55a122d2-1a09-4635-a298-67d0106d9375",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "refresh_tokens": {
@@ -21,9 +21,9 @@
           "notNull": true,
           "autoincrement": false
         },
-        "token": {
-          "name": "token",
-          "type": "varchar(512)",
+        "token_hash": {
+          "name": "token_hash",
+          "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -48,7 +48,7 @@
         "refresh_tokens_token_idx": {
           "name": "refresh_tokens_token_idx",
           "columns": [
-            "token"
+            "token_hash"
           ],
           "isUnique": true
         },
@@ -78,6 +78,96 @@
       "compositePrimaryKeys": {
         "refresh_tokens_id": {
           "name": "refresh_tokens_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "transfer_requests": {
+      "name": "transfer_requests",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key_hash": {
+          "name": "idempotency_key_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount": {
+          "name": "amount",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "destination_address": {
+          "name": "destination_address",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transaction_hash": {
+          "name": "transaction_hash",
+          "type": "varchar(66)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {
+        "transfer_requests_user_key_idx": {
+          "name": "transfer_requests_user_key_idx",
+          "columns": [
+            "user_id",
+            "idempotency_key_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "transfer_requests_user_id_users_id_fk": {
+          "name": "transfer_requests_user_id_users_id_fk",
+          "tableFrom": "transfer_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transfer_requests_id": {
+          "name": "transfer_requests_id",
           "columns": [
             "id"
           ]
