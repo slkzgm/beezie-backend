@@ -10,6 +10,11 @@ const logger = createLogger('db-client');
 let pool: mysql.Pool | undefined;
 let database: Database | undefined;
 
+const CONNECTION_LIMIT = 10;
+const CONNECT_TIMEOUT_MS = 10_000;
+const QUEUE_LIMIT = 25;
+const POOL_TIMEZONE = 'Z';
+
 export const getDb = () => {
   if (!pool) {
     logger.info('Creating MySQL connection pool');
@@ -24,7 +29,10 @@ export const getDb = () => {
       password: connectionUrl.password,
       database: databaseName,
       waitForConnections: true,
-      connectionLimit: 10,
+      connectionLimit: CONNECTION_LIMIT,
+      queueLimit: QUEUE_LIMIT,
+      connectTimeout: CONNECT_TIMEOUT_MS,
+      timezone: POOL_TIMEZONE,
     });
   }
 

@@ -75,7 +75,7 @@ health: ensure-env
 test:
 	bun run test
 
-verify: ensure-env
+verify:
 	bun run typecheck
 	bun run lint
 	bun run format:check
