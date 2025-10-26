@@ -8,13 +8,14 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target bun",
     "start": "bun run dist/index.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"scripts/**/*.ts\"",
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"scripts/**/*.ts\" \"tests/**/*.ts\"",
     "lint:fix": "bun run lint -- --fix",
-    "format": "prettier --write \"{src,scripts}/**/*.ts\"",
-    "format:check": "prettier --check \"{src,scripts}/**/*.ts\"",
+    "format": "prettier --write \"{src,scripts,tests}/**/*.ts\"",
+    "format:check": "prettier --check \"{src,scripts,tests}/**/*.ts\"",
     "drizzle:generate": "DRIZZLE_CONFIG=./drizzle.config.ts drizzle-kit generate",
     "drizzle:migrate": "DRIZZLE_CONFIG=./drizzle.config.ts drizzle-kit migrate",
-    "typechain": "typechain --target ethers-v6 --out-dir ./typechain \"artifacts/**/*.json\""
+    "typechain": "typechain --target ethers-v6 --out-dir ./typechain \"artifacts/**/*.json\"",
+    "test": "bun test"
   },
   "devDependencies": {
     "@eslint/js": "^9.38.0",

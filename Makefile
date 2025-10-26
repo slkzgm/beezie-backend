@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 DEV_PROFILE := --profile dev
 PROD_PROFILE := --profile prod
 
-.PHONY: help dev-up dev-down dev-reset dev-logs dev-migrate db-shell prod-build prod-up prod-down prod-logs prod-restart ensure-env health
+.PHONY: help dev-up dev-down dev-reset dev-logs dev-migrate db-shell prod-build prod-up prod-down prod-logs prod-restart ensure-env health test
 
 help:
 	@echo "Available targets:"
@@ -20,6 +20,7 @@ help:
 	@echo "  make prod-logs     # Tail production logs"
 	@echo "  make prod-restart  # Rebuild and restart production stack"
 	@echo "  make health        # Call the /health endpoint on the running API"
+	@echo "  make test         # Run Bun test suite"
 
 ensure-env:
 	@test -f .env || (echo "Missing .env file. Copy .env.example to .env before running this target." && exit 1)
@@ -69,3 +70,6 @@ health: ensure-env
 	  rm -f /tmp/beezie-health.json; \
 	  exit 1; \
 	fi
+
+test:
+	bun run test

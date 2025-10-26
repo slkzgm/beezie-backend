@@ -26,7 +26,8 @@
     "src",
     "scripts",
     "drizzle.config.ts",
-    "typechain"
+    "typechain",
+    "tests"
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -25,7 +25,25 @@ type TransferResult = {
   transactionHash: string;
 };
 
+export type WalletServiceDependencies = {
+  findWalletByUserId: typeof walletsRepository.findWalletByUserId;
+  decryptPrivateKey: (encryptedKey: string) => Promise<string>;
+  getWalletSigner: typeof getWalletSigner;
+  getUsdcContract: typeof getUsdcContract;
+  getUsdcDecimals: typeof getUsdcDecimals;
+};
+
+const defaultDependencies: WalletServiceDependencies = {
+  findWalletByUserId: walletsRepository.findWalletByUserId,
+  decryptPrivateKey: (encryptedKey) => cryptoManager.decryptPrivateKey(encryptedKey),
+  getWalletSigner,
+  getUsdcContract,
+  getUsdcDecimals,
+};
+
 export class WalletService {
+  constructor(private readonly deps: WalletServiceDependencies = defaultDependencies) {}
+
   async transferUsdc(
     db: Database,
     payload: TransferInput,
@@ -45,20 +63,20 @@ export class WalletService {
       throw new WalletError('Invalid user identifier', 400);
     }
 
-    const walletRecord = await walletsRepository.findWalletByUserId(db, numericUserId);
+    const walletRecord = await this.deps.findWalletByUserId(db, numericUserId);
 
     if (!walletRecord) {
       throw new WalletError('Wallet not found for user', 404);
     }
 
     try {
-      const decryptedPrivateKey = await cryptoManager.decryptPrivateKey(
+      const decryptedPrivateKey = await this.deps.decryptPrivateKey(
         walletRecord.encryptedPrivateKey,
       );
 
-      const signer = getWalletSigner(decryptedPrivateKey);
-      const usdcContract = getUsdcContract(signer);
-      const decimals = await getUsdcDecimals();
+      const signer = this.deps.getWalletSigner(decryptedPrivateKey);
+      const usdcContract = this.deps.getUsdcContract(signer);
+      const decimals = await this.deps.getUsdcDecimals();
       const amount = parseUnits(payload.amount, decimals);
       const balance = await usdcContract.balanceOf(walletRecord.address);
 
