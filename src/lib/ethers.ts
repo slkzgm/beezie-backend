@@ -9,10 +9,12 @@ const logger = createLogger('ethers');
 let provider: JsonRpcProvider | null = null;
 let cachedUsdcDecimals: number | null = null;
 
+const createJsonRpcProvider = (url: string): JsonRpcProvider => new JsonRpcProvider(url);
+
 const getProvider = (): JsonRpcProvider => {
   if (!provider) {
     logger.debug('Creating Flow EVM provider', { url: env.flow.accessApi });
-    provider = new JsonRpcProvider(env.flow.accessApi, undefined, { staticNetwork: undefined });
+    provider = createJsonRpcProvider(env.flow.accessApi);
   }
 
   return provider;
