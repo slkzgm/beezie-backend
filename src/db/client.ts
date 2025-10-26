@@ -13,8 +13,16 @@ let database: Database | undefined;
 export const getDb = () => {
   if (!pool) {
     logger.info('Creating MySQL connection pool');
+    const connectionUrl = new URL(env.db.url);
+    const port = connectionUrl.port ? Number.parseInt(connectionUrl.port, 10) : 3306;
+    const databaseName = connectionUrl.pathname.replace(/^\//, '') || undefined;
+
     pool = mysql.createPool({
-      uri: env.db.url,
+      host: connectionUrl.hostname,
+      port,
+      user: connectionUrl.username,
+      password: connectionUrl.password,
+      database: databaseName,
       waitForConnections: true,
       connectionLimit: 10,
     });
