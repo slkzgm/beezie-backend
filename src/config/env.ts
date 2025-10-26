@@ -13,7 +13,13 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   ENCRYPTION_KEY: z.string().min(32, 'Encryption key must be at least 32 characters'),
-  FLOW_ACCESS_API: z.string().url(),
+  FLOW_ACCESS_API: z
+    .string()
+    .url()
+    .refine(
+      (value) => !/rest-testnet\.onflow\.org/i.test(value),
+      'Flow access API must be the Flow EVM JSON-RPC endpoint (e.g. https://evm-testnet.flowscan.io/v1/<project-id>)',
+    ),
   FLOW_USDC_CONTRACT_ADDRESS: z
     .string()
     .length(42, 'USDC contract address must be a valid EVM-style address'),
