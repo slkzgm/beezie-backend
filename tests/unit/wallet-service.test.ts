@@ -4,7 +4,9 @@ import '../setup';
 
 import type { Signer } from 'ethers';
 import type { Database } from '@/db/types';
+import type { Wallet } from '@/db/schema';
 import type { TransferInput } from '@/schemas/wallet.schema';
+import type { FlowUSDC } from '../../typechain/FlowUSDC';
 import {
   WalletService,
   WalletError,
@@ -18,31 +20,47 @@ const basePayload: TransferInput = {
 
 const mockDb = {} as unknown as Database;
 
+const walletFixture: Wallet = {
+  id: 1,
+  userId: 1,
+  address: '0x0000000000000000000000000000000000000001',
+  encryptedPrivateKey: 'encrypted',
+  createdAt: new Date('2024-01-01T00:00:00.000Z'),
+};
+
+const makeContract = ({
+  balanceOf,
+  transfer,
+}: {
+  balanceOf: () => Promise<bigint>;
+  transfer: () => Promise<{ hash: string }>;
+}): FlowUSDC =>
+  ({
+    balanceOf: balanceOf as unknown,
+    transfer: transfer as unknown,
+  }) as FlowUSDC;
+
 const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
   const balanceMock = mock(() => Promise.resolve(2_000_000n));
   const transferMock = mock(() => Promise.resolve({ hash: '0xtxhash' }));
 
-  const deps: WalletServiceDependencies = {
-    findWalletByUserId: mock(() =>
-      Promise.resolve({
-        encryptedPrivateKey: 'encrypted',
-        address: '0x0000000000000000000000000000000000000001',
-      }),
+  const baseDeps: WalletServiceDependencies = {
+    findWalletByUserId: mock<WalletServiceDependencies['findWalletByUserId']>(() =>
+      Promise.resolve(walletFixture),
     ),
-    decryptPrivateKey: mock(() =>
+    decryptPrivateKey: mock<WalletServiceDependencies['decryptPrivateKey']>(() =>
       Promise.resolve('0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
     ),
-    getWalletSigner: mock(() => ({}) as unknown as Signer),
-    getUsdcContract: mock(
-      () =>
-        ({
-          balanceOf: balanceMock,
-          transfer: transferMock,
-        }) as unknown,
+    getWalletSigner: mock<WalletServiceDependencies['getWalletSigner']>(
+      () => ({}) as unknown as Signer,
     ),
-    getUsdcDecimals: mock(() => Promise.resolve(6)),
-    ...overrides,
+    getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+      makeContract({ balanceOf: balanceMock, transfer: transferMock }),
+    ),
+    getUsdcDecimals: mock<WalletServiceDependencies['getUsdcDecimals']>(() => Promise.resolve(6)),
   };
+
+  const deps: WalletServiceDependencies = { ...baseDeps, ...overrides };
 
   const service = new WalletService(deps);
   return { service, deps, balanceMock, transferMock };
@@ -60,7 +78,9 @@ describe('WalletService.transferUsdc', () => {
 
   test('throws when wallet not found', () => {
     const { service } = createService({
-      findWalletByUserId: mock(() => Promise.resolve(null)),
+      findWalletByUserId: mock<WalletServiceDependencies['findWalletByUserId']>(() =>
+        Promise.resolve(null),
+      ),
     });
 
     const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
@@ -69,12 +89,11 @@ describe('WalletService.transferUsdc', () => {
 
   test('throws when balance is insufficient', () => {
     const { service } = createService({
-      getUsdcContract: mock(
-        () =>
-          ({
-            balanceOf: mock(() => Promise.resolve(100n)),
-            transfer: mock(() => Promise.resolve({ hash: '0x0' })),
-          }) as unknown,
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(100n)),
+          transfer: mock(() => Promise.resolve({ hash: '0x0' })),
+        }),
       ),
     });
 
@@ -84,12 +103,11 @@ describe('WalletService.transferUsdc', () => {
 
   test('wraps contract errors into wallet error', () => {
     const { service } = createService({
-      getUsdcContract: mock(
-        () =>
-          ({
-            balanceOf: mock(() => Promise.resolve(2_000_000n)),
-            transfer: mock(() => Promise.reject(new Error('ERC20InvalidReceiver'))),
-          }) as unknown,
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(new Error('ERC20InvalidReceiver'))),
+        }),
       ),
     });
 
