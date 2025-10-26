@@ -1,12 +1,4 @@
-import {
-  datetime,
-  index,
-  int,
-  mysqlEnum,
-  mysqlTable,
-  uniqueIndex,
-  varchar,
-} from 'drizzle-orm/mysql-core';
+import { bigint, datetime, index, int, mysqlEnum, mysqlTable, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 import { sql } from 'drizzle-orm';
 
 export const users = mysqlTable(
@@ -71,7 +63,7 @@ export const transferRequests = mysqlTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     idempotencyKeyHash: varchar('idempotency_key_hash', { length: 64 }).notNull(),
-    amount: varchar('amount', { length: 64 }).notNull(),
+    amount: bigint('amount', { mode: 'bigint' }).notNull(),
     destinationAddress: varchar('destination_address', { length: 42 }).notNull(),
     transactionHash: varchar('transaction_hash', { length: 66 }),
     status: mysqlEnum('status', ['pending', 'completed']).notNull().default('pending'),

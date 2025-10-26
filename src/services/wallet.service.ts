@@ -87,6 +87,8 @@ export class WalletService {
     }
 
     const idempotencyKeyHash = idempotencyKey ? sha256Hex(idempotencyKey) : undefined;
+    const decimals = await this.deps.getUsdcDecimals();
+    const baseAmount = parseUnits(payload.amount.toString(), decimals);
 
     type ReservedTransferRequest = NonNullable<
       Awaited<ReturnType<WalletServiceDependencies['findTransferRequest']>>
@@ -99,7 +101,7 @@ export class WalletService {
       const reservationResult = await withTransaction(db, async (tx) => {
         const existing = await this.deps.findTransferRequest(tx, numericUserId, idempotencyKeyHash);
         if (existing) {
-          this.ensureMatchingIdempotentPayload(existing, payload);
+          this.ensureMatchingIdempotentPayload(existing, payload.destinationAddress, baseAmount);
           return { record: existing, created: false } as const;
         }
 
@@ -107,7 +109,7 @@ export class WalletService {
           const created = await this.deps.createTransferRequest(tx, {
             userId: numericUserId,
             idempotencyKeyHash,
-            amount: payload.amount,
+            amount: baseAmount,
             destinationAddress: payload.destinationAddress,
             status: 'pending',
             transactionHash: null,
@@ -129,7 +131,11 @@ export class WalletService {
               throw new WalletError('Failed to reserve transfer request', 500);
             }
 
-            this.ensureMatchingIdempotentPayload(concurrent, payload);
+            this.ensureMatchingIdempotentPayload(
+              concurrent,
+              payload.destinationAddress,
+              baseAmount,
+            );
             return { record: concurrent, created: false } as const;
           }
 
@@ -165,15 +171,13 @@ export class WalletService {
 
       const signer = this.deps.getWalletSigner(decryptedPrivateKey);
       const usdcContract = this.deps.getUsdcContract(signer);
-      const decimals = await this.deps.getUsdcDecimals();
-      const amount = parseUnits(payload.amount.toString(), decimals);
       const balance = await usdcContract.balanceOf(walletRecord.address);
 
-      if (balance < amount) {
+      if (balance < baseAmount) {
         throw new WalletError('Insufficient USDC balance', 400);
       }
 
-      const tx = await usdcContract.transfer(payload.destinationAddress, amount);
+      const tx = await usdcContract.transfer(payload.destinationAddress, baseAmount);
 
       logger.info('USDC transfer broadcast', {
         userId: numericUserId,
@@ -288,11 +292,12 @@ export class WalletService {
 
   private ensureMatchingIdempotentPayload(
     existing: NonNullable<Awaited<ReturnType<WalletServiceDependencies['findTransferRequest']>>>,
-    payload: TransferInput,
+    destinationAddress: string,
+    expectedAmount: bigint,
   ) {
     if (
-      existing.amount !== payload.amount ||
-      existing.destinationAddress.toLowerCase() !== payload.destinationAddress.toLowerCase()
+      existing.amount !== expectedAmount ||
+      existing.destinationAddress.toLowerCase() !== destinationAddress.toLowerCase()
     ) {
       throw new WalletError('Idempotency key already used with different payload', 409);
     }

@@ -259,7 +259,7 @@ describe('WalletService.transferUsdc', () => {
       id: 1,
       userId: 1,
       idempotencyKeyHash: 'hash',
-      amount: '1.5',
+      amount: 1_500_000n,
       destinationAddress: '0x0000000000000000000000000000000000000002',
       transactionHash: '0xcached',
       status: 'completed' as TransferRequest['status'],
@@ -288,7 +288,7 @@ describe('WalletService.transferUsdc', () => {
       id: 1,
       userId: 1,
       idempotencyKeyHash: 'hash',
-      amount: '1.5',
+      amount: 1_500_000n,
       destinationAddress: '0x0000000000000000000000000000000000000002',
       transactionHash: null,
       status: 'pending',
@@ -313,7 +313,7 @@ describe('WalletService.transferUsdc', () => {
           id: 1,
           userId: 1,
           idempotencyKeyHash: 'hash',
-          amount: '2.0',
+          amount: 2_000_000n,
           destinationAddress: '0x0000000000000000000000000000000000000002',
           transactionHash: '0xhash',
           status: 'completed',
@@ -351,6 +351,7 @@ describe('WalletService.transferUsdc', () => {
     expect(createPayload.status).toBe('pending');
     expect(createPayload.transactionHash).toBeNull();
     expect(typeof createPayload.idempotencyKeyHash).toBe('string');
+    expect(createPayload.amount).toBe(1_500_000n);
 
     expect(updateTransferRequestMock.mock.calls.length).toBe(1);
     const updateCall = updateTransferRequestMock.mock.calls[0] as
