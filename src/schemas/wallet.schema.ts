@@ -3,8 +3,11 @@ import { z } from 'zod';
 export const transferSchema = z.object({
   amount: z
     .string()
-    .regex(/^\d+(\.\d+)?$/, 'Amount must be a positive number')
-    .transform((value) => value.trim()),
+    .trim()
+    .regex(
+      /^(?!0+(?:\.0+)?$)\d+(?:\.\d{1,6})?$/,
+      'Amount must be a positive number with up to 6 decimal places',
+    ),
   destinationAddress: z
     .string()
     .length(42, 'Destination address must be a valid EVM address')

@@ -43,6 +43,12 @@ const makeContract = ({
 const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
   const balanceMock = mock(() => Promise.resolve(2_000_000n));
   const transferMock = mock(() => Promise.resolve({ hash: '0xtxhash' }));
+  const findTransferRequestMock = mock<WalletServiceDependencies['findTransferRequest']>(() =>
+    Promise.resolve(null),
+  );
+  const createTransferRequestMock = mock<WalletServiceDependencies['createTransferRequest']>(() =>
+    Promise.resolve(null),
+  );
 
   const baseDeps: WalletServiceDependencies = {
     findWalletByUserId: mock<WalletServiceDependencies['findWalletByUserId']>(() =>
@@ -58,22 +64,32 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
       makeContract({ balanceOf: balanceMock, transfer: transferMock }),
     ),
     getUsdcDecimals: mock<WalletServiceDependencies['getUsdcDecimals']>(() => Promise.resolve(6)),
+    findTransferRequest: findTransferRequestMock,
+    createTransferRequest: createTransferRequestMock,
   };
 
   const deps: WalletServiceDependencies = { ...baseDeps, ...overrides };
 
   const service = new WalletService(deps);
-  return { service, deps, balanceMock, transferMock };
+  return {
+    service,
+    deps,
+    balanceMock,
+    transferMock,
+    findTransferRequestMock,
+    createTransferRequestMock,
+  };
 };
 
 describe('WalletService.transferUsdc', () => {
   test('broadcasts transfer and returns transaction hash', async () => {
-    const { service, transferMock } = createService();
+    const { service, transferMock, createTransferRequestMock } = createService();
 
     const result = await service.transferUsdc(mockDb, basePayload, '1');
 
     expect(result.transactionHash).toBe('0xtxhash');
     expect(transferMock).toHaveBeenCalled();
+    expect(createTransferRequestMock.mock.calls.length).toBe(0);
   });
 
   test('throws when wallet not found', () => {
@@ -117,10 +133,103 @@ describe('WalletService.transferUsdc', () => {
     );
   });
 
+  test('maps insufficient allowance errors to 400', () => {
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(new Error('ERC20InsufficientAllowance'))),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
+    return expect(transferPromise).rejects.toThrow('Insufficient allowance for USDC transfer');
+  });
+
+  test('maps timeout errors to 504', () => {
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(new Error('timeout exceeded'))),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
+    return expect(transferPromise).rejects.toThrow('Flow network timeout, please retry later');
+  });
+
   test('rejects when userId missing', () => {
     const { service } = createService();
 
     const transferPromise = service.transferUsdc(mockDb, basePayload, undefined);
     return expect(transferPromise).rejects.toThrow('Unauthorized');
+  });
+
+  test('returns cached transaction when idempotency key already processed', async () => {
+    const cachedEntry = {
+      id: 1,
+      userId: 1,
+      idempotencyKeyHash: 'hash',
+      amount: '1.5',
+      destinationAddress: '0x0000000000000000000000000000000000000002',
+      transactionHash: '0xcached',
+      createdAt: new Date(),
+    };
+    const findTransferRequestMock = mock<WalletServiceDependencies['findTransferRequest']>(() =>
+      Promise.resolve(cachedEntry),
+    );
+    const { service, createTransferRequestMock } = createService({
+      findTransferRequest: findTransferRequestMock,
+    });
+
+    const result = await service.transferUsdc(mockDb, basePayload, '1', 'key');
+
+    expect(result.transactionHash).toBe('0xcached');
+    expect(findTransferRequestMock).toHaveBeenCalled();
+    expect(createTransferRequestMock.mock.calls.length).toBe(0);
+  });
+
+  test('throws conflict when idempotency key reused with different payload', () => {
+    const { service } = createService({
+      findTransferRequest: mock(() =>
+        Promise.resolve({
+          id: 1,
+          userId: 1,
+          idempotencyKeyHash: 'hash',
+          amount: '2.0',
+          destinationAddress: '0x0000000000000000000000000000000000000002',
+          transactionHash: '0xhash',
+          createdAt: new Date(),
+        }),
+      ),
+    });
+
+    const transferPromise = service.transferUsdc(mockDb, basePayload, '1', 'key');
+    return expect(transferPromise).rejects.toThrow(
+      'Idempotency key already used with different payload',
+    );
+  });
+
+  test('stores idempotency record after successful transfer', async () => {
+    const { service, createTransferRequestMock } = createService();
+
+    const result = await service.transferUsdc(mockDb, basePayload, '1', 'key');
+
+    expect(result.transactionHash).toBe('0xtxhash');
+    const call = createTransferRequestMock.mock.calls[0] as
+      | Parameters<WalletServiceDependencies['createTransferRequest']>
+      | undefined;
+    expect(call).toBeDefined();
+    if (!call) {
+      throw new Error('Expected createTransferRequest to be called');
+    }
+    const [dbArg, payload] = call;
+    expect(dbArg).toBe(mockDb);
+    expect(payload.transactionHash).toBe('0xtxhash');
+    expect(payload.amount).toBe('1.5');
+    expect(typeof payload.idempotencyKeyHash).toBe('string');
   });
 });

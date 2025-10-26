@@ -16,7 +16,13 @@ export class WalletController {
 
     try {
       const db = ctx.get('db');
-      const result = await walletService.transferUsdc(db, payload, ctx.get('userId'));
+      const idempotencyKey = ctx.req.header('Idempotency-Key') ?? undefined;
+      const result = await walletService.transferUsdc(
+        db,
+        payload,
+        ctx.get('userId'),
+        idempotencyKey,
+      );
 
       return ctx.json(
         {
@@ -25,8 +31,8 @@ export class WalletController {
         },
         202,
       );
-    } catch (error) {
-      logger.error('USDC transfer failed', error);
+    } catch (error: unknown) {
+      logger.error('USDC transfer failed', error instanceof Error ? error : { error });
       const status = error instanceof WalletError ? error.status : 500;
       ctx.status(status);
       return ctx.json({

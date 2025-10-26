@@ -94,4 +94,70 @@ describe('Wallet routes', () => {
     const json = (await response.json()) as { message: string };
     expect(json.message).toBe('Insufficient USDC balance');
   });
+
+  test('rejects when payload validation fails', async () => {
+    const tokenModule = await import('@/services/token.service');
+    spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
+      sub: '1',
+      tokenType: 'access',
+    });
+
+    const { walletService } = await import('@/services/wallet.service');
+    const transferSpy = spyOn(walletService, 'transferUsdc');
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+      },
+      body: JSON.stringify({
+        amount: '0',
+        destinationAddress: '0x0000000000000000000000000000000000000002',
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(transferSpy).not.toHaveBeenCalled();
+  });
+
+  test('passes Idempotency-Key header to wallet service', async () => {
+    const { walletService } = await import('@/services/wallet.service');
+    const transferSpy = spyOn(walletService, 'transferUsdc').mockResolvedValue({
+      transactionHash: '0xabc',
+    });
+
+    const tokenModule = await import('@/services/token.service');
+    spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
+      sub: '1',
+      tokenType: 'access',
+    });
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+        'Idempotency-Key': 'unique-key',
+      },
+      body: JSON.stringify({
+        amount: '1.5',
+        destinationAddress: '0x0000000000000000000000000000000000000002',
+      }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(transferSpy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      '1',
+      'unique-key',
+    );
+  });
 });
