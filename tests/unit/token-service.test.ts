@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { importPKCS8, SignJWT } from 'jose';
+import { decodeProtectedHeader, importPKCS8, SignJWT } from 'jose';
 
 import '../setup';
 
@@ -24,26 +24,33 @@ const issueCustomToken = async (
     ttl?: string;
     subject?: string;
     extraClaims?: Record<string, unknown>;
+    kid?: string | null;
   } = {},
 ) => {
-  const { issuer, audience, ttl, subject, extraClaims } = {
+  const { issuer, audience, ttl, subject, extraClaims, kid } = {
     issuer: env.jwt.issuer,
     audience: env.jwt.audience,
     ttl: tokenType === 'access' ? env.jwt.accessTokenTtl : env.jwt.refreshTokenTtl,
     subject: '42',
     extraClaims: {} as Record<string, unknown>,
+    kid: env.jwt.keyId,
     ...options,
   };
 
-  return new SignJWT({ tokenType, ...extraClaims })
-    .setProtectedHeader({ alg: ALGORITHM })
+  const signer = new SignJWT({ tokenType, ...extraClaims })
     .setSubject(subject)
     .setIssuer(issuer)
     .setAudience(audience)
     .setIssuedAt()
     .setNotBefore('0s')
-    .setExpirationTime(ttl)
-    .sign(signingKey as never);
+    .setExpirationTime(ttl);
+
+  const header: Parameters<SignJWT['setProtectedHeader']>[0] = { alg: ALGORITHM };
+  if (kid) {
+    header.kid = kid;
+  }
+
+  return signer.setProtectedHeader(header).sign(signingKey as never);
 };
 
 describe('tokenService', () => {
@@ -54,11 +61,17 @@ describe('tokenService', () => {
     expect(typeof issued.accessToken).toBe('string');
     expect(typeof issued.refreshToken).toBe('string');
 
+    const accessHeader = decodeProtectedHeader(issued.accessToken);
+    expect(accessHeader.kid).toBe(env.jwt.keyId);
+
     const verifiedAccess = await tokenService.verifyAccessToken(issued.accessToken);
     expect(verifiedAccess?.sub).toBe('42');
     expect(verifiedAccess?.tokenType).toBe('access');
     expect(verifiedAccess?.iss).toBe(env.jwt.issuer);
     expect(verifiedAccess?.aud).toBe(env.jwt.audience);
+
+    const refreshHeader = decodeProtectedHeader(issued.refreshToken);
+    expect(refreshHeader.kid).toBe(env.jwt.keyId);
 
     const verifiedRefresh = await tokenService.verifyRefreshToken(issued.refreshToken);
     expect(verifiedRefresh?.sub).toBe('42');
@@ -113,6 +126,27 @@ describe('tokenService', () => {
 
     const forged = await issueCustomToken('refresh', {
       audience: 'wrong-audience',
+      extraClaims: { jti: 'forged' },
+    });
+    const verified = await tokenService.verifyRefreshToken(forged);
+
+    expect(verified).toBeNull();
+  });
+
+  test('rejects access tokens without key identifier', async () => {
+    const { tokenService } = await loadTokenService();
+
+    const forged = await issueCustomToken('access', { kid: null });
+    const verified = await tokenService.verifyAccessToken(forged);
+
+    expect(verified).toBeNull();
+  });
+
+  test('rejects refresh tokens signed with unknown key identifier', async () => {
+    const { tokenService } = await loadTokenService();
+
+    const forged = await issueCustomToken('refresh', {
+      kid: 'unknown-key',
       extraClaims: { jti: 'forged' },
     });
     const verified = await tokenService.verifyRefreshToken(forged);

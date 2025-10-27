@@ -14,6 +14,7 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   JWT_ISSUER: z.string().min(1, 'JWT issuer is required'),
   JWT_AUDIENCE: z.string().min(1, 'JWT audience is required'),
+  JWT_KEY_ID: z.string().min(1, 'JWT key id is required'),
   ENCRYPTION_KEY: z.string().min(32, 'Encryption key must be at least 32 characters'),
   FLOW_ACCESS_API: z
     .string()
@@ -56,6 +57,7 @@ export const env = {
     refreshTokenTtl: data.JWT_REFRESH_EXPIRES_IN,
     issuer: data.JWT_ISSUER,
     audience: data.JWT_AUDIENCE,
+    keyId: data.JWT_KEY_ID,
   },
   crypto: {
     encryptionKey: data.ENCRYPTION_KEY,

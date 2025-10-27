@@ -1,6 +1,15 @@
 import { randomBytes } from 'crypto';
 
-import { decodeJwt, importPKCS8, importSPKI, jwtVerify, SignJWT, type JWTPayload } from 'jose';
+import {
+  decodeJwt,
+  decodeProtectedHeader,
+  importPKCS8,
+  importSPKI,
+  jwtVerify,
+  SignJWT,
+  type JWSHeaderParameters,
+  type JWTPayload,
+} from 'jose';
 
 import { env } from '@/config/env';
 import { createLogger } from '@/utils/logger';
@@ -28,23 +37,57 @@ export type IssuedTokens = {
 const ALGORITHM = 'RS256';
 
 export class TokenService {
-  private signingKey?: Awaited<ReturnType<typeof importPKCS8>>;
-  private verificationKey?: Awaited<ReturnType<typeof importSPKI>>;
+  private signingKey?: {
+    kid: string;
+    key: Awaited<ReturnType<typeof importPKCS8>>;
+    loadedAt: Date;
+  };
+  private verificationKeys = new Map<
+    string,
+    { key: Awaited<ReturnType<typeof importSPKI>>; loadedAt: Date }
+  >();
 
-  private async getPrivateKey(): Promise<Awaited<ReturnType<typeof importPKCS8>>> {
+  private async getSigningKey() {
     if (!this.signingKey) {
-      this.signingKey = await importPKCS8(env.jwt.privateKey, ALGORITHM);
+      const key = await importPKCS8(env.jwt.privateKey, ALGORITHM);
+      this.signingKey = {
+        kid: env.jwt.keyId,
+        key,
+        loadedAt: new Date(),
+      };
+      logger.debug('Loaded signing key material', {
+        kid: this.signingKey.kid,
+      });
     }
 
     return this.signingKey;
   }
 
-  private async getPublicKey(): Promise<Awaited<ReturnType<typeof importSPKI>>> {
-    if (!this.verificationKey) {
-      this.verificationKey = await importSPKI(env.jwt.publicKey, ALGORITHM);
+  private async getVerificationKey(kid: string) {
+    const cached = this.verificationKeys.get(kid);
+    if (cached) {
+      return cached;
     }
 
-    return this.verificationKey;
+    if (kid !== env.jwt.keyId) {
+      return null;
+    }
+
+    const key = await importSPKI(env.jwt.publicKey, ALGORITHM);
+    const record = { key, loadedAt: new Date() } as const;
+    this.verificationKeys.set(kid, record);
+    logger.debug('Loaded verification key material', {
+      kid,
+    });
+    return record;
+  }
+
+  private static extractKid(header: JWSHeaderParameters): string | null {
+    if (!header.kid) {
+      return null;
+    }
+
+    return typeof header.kid === 'string' ? header.kid : null;
   }
 
   private async signToken(
@@ -53,8 +96,9 @@ export class TokenService {
     ttl: string,
     extraClaims: Record<string, unknown> = {},
   ): Promise<string> {
+    const signingKey = await this.getSigningKey();
     const signer = new SignJWT({ tokenType, ...extraClaims })
-      .setProtectedHeader({ alg: ALGORITHM })
+      .setProtectedHeader({ alg: ALGORITHM, kid: signingKey.kid })
       .setSubject(String(userId))
       .setIssuer(env.jwt.issuer)
       .setAudience(env.jwt.audience)
@@ -64,8 +108,7 @@ export class TokenService {
 
     // The jose typings expose a flexible KeyLike union which trips the type checker.
     // We trust the imported PKCS8 material, so we cast explicitly before signing.
-    const privateKey = await this.getPrivateKey();
-    return signer.sign(privateKey as never);
+    return signer.sign(signingKey.key as never);
   }
 
   private decodeRefreshToken(token: string): RefreshTokenPayload {
@@ -103,8 +146,21 @@ export class TokenService {
     });
 
     try {
-      const publicKey = await this.getPublicKey();
-      const verification = await jwtVerify(token, publicKey as never, {
+      const header = decodeProtectedHeader(token);
+      const kid = TokenService.extractKid(header);
+
+      if (!kid) {
+        logger.warn('Access token missing key identifier');
+        return null;
+      }
+
+      const keyRecord = await this.getVerificationKey(kid);
+      if (!keyRecord) {
+        logger.warn('Access token key identifier is not trusted', { kid });
+        return null;
+      }
+
+      const verification = await jwtVerify(token, keyRecord.key as never, {
         algorithms: [ALGORITHM],
         issuer: env.jwt.issuer,
         audience: env.jwt.audience,
@@ -128,8 +184,21 @@ export class TokenService {
     logger.debug('Attempting to verify refresh token');
 
     try {
-      const publicKey = await this.getPublicKey();
-      const verification = await jwtVerify(token, publicKey as never, {
+      const header = decodeProtectedHeader(token);
+      const kid = TokenService.extractKid(header);
+
+      if (!kid) {
+        logger.warn('Refresh token missing key identifier');
+        return null;
+      }
+
+      const keyRecord = await this.getVerificationKey(kid);
+      if (!keyRecord) {
+        logger.warn('Refresh token key identifier is not trusted', { kid });
+        return null;
+      }
+
+      const verification = await jwtVerify(token, keyRecord.key as never, {
         algorithms: [ALGORITHM],
         issuer: env.jwt.issuer,
         audience: env.jwt.audience,
