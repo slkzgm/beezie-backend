@@ -1,4 +1,11 @@
-import { JsonRpcProvider, type Signer, Wallet, isHexString } from 'ethers';
+import {
+  FetchRequest,
+  JsonRpcProvider,
+  type FetchResponse,
+  type Signer,
+  Wallet,
+  isHexString,
+} from 'ethers';
 
 import { env } from '@/config/env';
 import { createLogger } from '@/utils/logger';
@@ -6,10 +13,86 @@ import { FlowUSDC__factory } from '../../typechain';
 
 const logger = createLogger('ethers');
 
+export type ResilientProviderOptions = {
+  requestTimeoutMs: number;
+  maxAttempts: number;
+  slotIntervalMs: number;
+  retryableStatusCodes: ReadonlySet<number>;
+};
+
+const retryableStatusCodes = [408, 425, 500, 502, 503, 504, 522, 524, 598, 599] as const;
+
+const createDefaultResilientOptions = (): ResilientProviderOptions => ({
+  requestTimeoutMs: 10_000,
+  maxAttempts: 4,
+  slotIntervalMs: 250,
+  retryableStatusCodes: new Set(retryableStatusCodes),
+});
+
+class ResilientJsonRpcProvider extends JsonRpcProvider {
+  constructor(url: string, private readonly options: ResilientProviderOptions) {
+    super(url);
+  }
+
+  private shouldRetry(statusCode: number) {
+    if (statusCode >= 500 && statusCode < 600) {
+      return true;
+    }
+
+    return this.options.retryableStatusCodes.has(statusCode);
+  }
+
+  private configureRetries(request: FetchRequest) {
+    request.setThrottleParams({
+      maxAttempts: this.options.maxAttempts,
+      slotInterval: this.options.slotIntervalMs,
+    });
+
+    request.retryFunc = async (_req, response, attempt) => {
+      const shouldRetry = attempt + 1 < this.options.maxAttempts;
+      if (!shouldRetry) {
+        logger.error('Flow RPC retry limit reached', {
+          statusCode: response.statusCode,
+          statusMessage: response.statusMessage,
+        });
+      } else {
+        logger.warn('Flow RPC throttled request', {
+          attempt: attempt + 1,
+          statusCode: response.statusCode,
+        });
+      }
+      return shouldRetry;
+    };
+
+    request.processFunc = async (req, response) => this.processResponse(req, response);
+  }
+
+  private async processResponse(request: FetchRequest, response: FetchResponse) {
+    if (!response.ok() && this.shouldRetry(response.statusCode)) {
+      logger.warn('Flow RPC response marked retryable', {
+        statusCode: response.statusCode,
+        statusMessage: response.statusMessage,
+        url: request.url,
+      });
+      response.throwThrottleError();
+    }
+
+    return response;
+  }
+
+  protected override _getConnection(): FetchRequest {
+    const connection = super._getConnection();
+    connection.timeout = this.options.requestTimeoutMs;
+    this.configureRetries(connection);
+    return connection;
+  }
+}
+
 let provider: JsonRpcProvider | null = null;
 let cachedUsdcDecimals: number | null = null;
 
-const createJsonRpcProvider = (url: string): JsonRpcProvider => new JsonRpcProvider(url);
+const createJsonRpcProvider = (url: string): JsonRpcProvider =>
+  new ResilientJsonRpcProvider(url, createDefaultResilientOptions());
 
 const getProvider = (): JsonRpcProvider => {
   if (!provider) {
@@ -63,3 +146,7 @@ export const getUsdcDecimals = async (): Promise<number> => {
   cachedUsdcDecimals = decimals;
   return decimals;
 };
+
+export { ResilientJsonRpcProvider };
+export const createResilientProviderOptions = (): ResilientProviderOptions =>
+  createDefaultResilientOptions();
