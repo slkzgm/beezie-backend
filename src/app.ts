@@ -16,7 +16,32 @@ export const createApp = () => {
 
   app.use('*', logger());
   app.use('*', compress());
-  app.use('*', secureHeaders());
+  app.use(
+    '*',
+    secureHeaders({
+      contentSecurityPolicy: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"],
+        imgSrc: ["'self'", 'data:'],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'"],
+        connectSrc: ["'self'"],
+      },
+      referrerPolicy: 'no-referrer',
+      strictTransportSecurity: 'max-age=63072000; includeSubDomains; preload',
+      xFrameOptions: 'DENY',
+      xPermittedCrossDomainPolicies: 'none',
+      permissionsPolicy: {
+        geolocation: ['none'],
+        microphone: ['none'],
+        camera: ['none'],
+      },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
 
   const allowedOrigins = env.http.corsAllowedOrigins;
   app.use(

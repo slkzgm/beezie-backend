@@ -15,6 +15,30 @@ const envSchema = z.object({
   JWT_ISSUER: z.string().min(1, 'JWT issuer is required'),
   JWT_AUDIENCE: z.string().min(1, 'JWT audience is required'),
   JWT_KEY_ID: z.string().min(1, 'JWT key id is required'),
+  JWT_ADDITIONAL_PUBLIC_KEYS: z
+    .preprocess((value) => {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return [];
+        }
+
+        try {
+          return JSON.parse(trimmed);
+        } catch (error) {
+          return value;
+        }
+      }
+
+      return value;
+    },
+    z.array(
+      z.object({
+        kid: z.string().min(1, 'Additional public key kid is required'),
+        publicKey: z.string().min(1, 'Additional public key material is required'),
+      }),
+    ))
+    .default([]),
   ENCRYPTION_KEY: z.string().min(32, 'Encryption key must be at least 32 characters'),
   FLOW_ACCESS_API: z
     .string()
@@ -58,6 +82,7 @@ export const env = {
     issuer: data.JWT_ISSUER,
     audience: data.JWT_AUDIENCE,
     keyId: data.JWT_KEY_ID,
+    additionalPublicKeys: data.JWT_ADDITIONAL_PUBLIC_KEYS,
   },
   crypto: {
     encryptionKey: data.ENCRYPTION_KEY,

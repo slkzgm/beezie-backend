@@ -69,15 +69,27 @@ export class TokenService {
       return cached;
     }
 
-    if (kid !== env.jwt.keyId) {
+    let publicKeyPem: string | null = null;
+
+    if (kid === env.jwt.keyId) {
+      publicKeyPem = env.jwt.publicKey;
+    } else {
+      const additional = env.jwt.additionalPublicKeys.find((entry) => entry.kid === kid);
+      if (additional) {
+        publicKeyPem = additional.publicKey;
+      }
+    }
+
+    if (!publicKeyPem) {
       return null;
     }
 
-    const key = await importSPKI(env.jwt.publicKey, ALGORITHM);
+    const key = await importSPKI(publicKeyPem, ALGORITHM);
     const record = { key, loadedAt: new Date() } as const;
     this.verificationKeys.set(kid, record);
     logger.debug('Loaded verification key material', {
       kid,
+      source: kid === env.jwt.keyId ? 'primary' : 'additional',
     });
     return record;
   }

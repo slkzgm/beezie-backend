@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'crypto';
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { decodeProtectedHeader, importPKCS8, SignJWT } from 'jose';
 
@@ -152,5 +153,47 @@ describe('tokenService', () => {
     const verified = await tokenService.verifyRefreshToken(forged);
 
     expect(verified).toBeNull();
+  });
+
+  test('verifies refresh tokens signed with additional public keys', async () => {
+    const { TokenService } = await loadTokenService();
+
+    const { privateKey: legacyPrivateKey, publicKey: legacyPublicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
+
+    const mutableEnv = env as unknown as {
+      jwt: typeof env.jwt & {
+        additionalPublicKeys: Array<{ kid: string; publicKey: string }>;
+      };
+    };
+
+    const originalAdditional = [...mutableEnv.jwt.additionalPublicKeys];
+    mutableEnv.jwt.additionalPublicKeys = [
+      ...originalAdditional,
+      { kid: 'legacy-key', publicKey: legacyPublicKey },
+    ];
+
+    const legacySigner = await importPKCS8(legacyPrivateKey, ALGORITHM);
+    const legacyToken = await new SignJWT({ tokenType: 'refresh', jti: 'legacy-jti' })
+      .setProtectedHeader({ alg: ALGORITHM, kid: 'legacy-key' })
+      .setSubject('84')
+      .setIssuer(env.jwt.issuer)
+      .setAudience(env.jwt.audience)
+      .setIssuedAt()
+      .setNotBefore('0s')
+      .setExpirationTime(env.jwt.refreshTokenTtl)
+      .sign(legacySigner as never);
+
+    const service = new TokenService();
+    const verified = await service.verifyRefreshToken(legacyToken);
+
+    expect(verified?.tokenType).toBe('refresh');
+    expect(verified?.jti).toBe('legacy-jti');
+    expect(verified?.sub).toBe('84');
+
+    mutableEnv.jwt.additionalPublicKeys = originalAdditional;
   });
 });
