@@ -471,4 +471,95 @@ describe('WalletService.transferUsdc', () => {
     expect(updateId).toBe(1);
     expect(updatePayload).toEqual({ transactionHash: '0xtxhash', status: 'completed' });
   });
+
+  test('emits audit log when transfer is broadcast', async () => {
+    const { env } = await import('@/config/env');
+    const envWritable = env as unknown as { logging: { level: string } };
+    const previousLevel = envWritable.logging.level;
+    envWritable.logging.level = 'info';
+
+    const { service } = createService();
+    const originalInfo = console.info;
+    const infoSpy = mock((..._args: unknown[]) => {});
+    console.info = infoSpy as typeof console.info;
+
+    try {
+      const result = await service.transferUsdc(mockDb, basePayload, '1');
+      expect(result.status).toBe('completed');
+    } finally {
+      envWritable.logging.level = previousLevel;
+      console.info = originalInfo;
+    }
+
+    const auditLogs = infoSpy.mock.calls.filter((call) => {
+      const [, payload] = call as [string, Record<string, unknown>];
+      return payload?.namespace === 'wallet-audit';
+    });
+
+    expect(auditLogs.length).toBe(1);
+    const [message, payload] = auditLogs[0] as [string, Record<string, unknown>];
+    expect(message).toBe('wallet transfer audit');
+    expect(payload).toMatchObject({
+      source: 'broadcast',
+      userId: 1,
+      destinationAddress: basePayload.destinationAddress,
+      transactionHash: '0xtxhash',
+      amountBaseUnits: '1500000',
+    });
+  });
+
+  test('emits audit log when returning cached transfer', async () => {
+    const completedReservation: TransferRequest = {
+      id: 42,
+      userId: 1,
+      idempotencyKeyHash: 'hash',
+      amount: 1_500_000n,
+      destinationAddress: basePayload.destinationAddress,
+      transactionHash: '0xcached',
+      status: 'completed',
+      createdAt: new Date(),
+    };
+
+    const { env } = await import('@/config/env');
+    const envWritable = env as unknown as { logging: { level: string } };
+    const previousLevel = envWritable.logging.level;
+    envWritable.logging.level = 'info';
+
+    const { service } = createService({
+      findTransferRequest: mock<WalletServiceDependencies['findTransferRequest']>(() =>
+        Promise.resolve(completedReservation),
+      ),
+      createTransferRequest: mock<WalletServiceDependencies['createTransferRequest']>(() =>
+        Promise.resolve(completedReservation),
+      ),
+    });
+
+    const originalInfo = console.info;
+    const infoSpy = mock((..._args: unknown[]) => {});
+    console.info = infoSpy as typeof console.info;
+
+    try {
+      const result = await service.transferUsdc(mockDb, basePayload, '1', 'existing-key');
+      expect(result).toEqual({ status: 'completed', transactionHash: '0xcached' });
+    } finally {
+      envWritable.logging.level = previousLevel;
+      console.info = originalInfo;
+    }
+
+    const auditLogs = infoSpy.mock.calls.filter((call) => {
+      const [, payload] = call as [string, Record<string, unknown>];
+      return payload?.namespace === 'wallet-audit';
+    });
+
+    expect(auditLogs.length).toBe(1);
+    const [message, payload] = auditLogs[0] as [string, Record<string, unknown>];
+    expect(message).toBe('wallet transfer audit');
+    expect(payload).toMatchObject({
+      source: 'cache',
+      userId: 1,
+      destinationAddress: basePayload.destinationAddress,
+      transactionHash: '0xcached',
+      amountBaseUnits: '1500000',
+    });
+  });
 });

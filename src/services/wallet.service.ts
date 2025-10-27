@@ -15,6 +15,7 @@ import { createLogger } from '@/utils/logger';
 import { sha256Hex } from '@/utils/hash';
 
 const logger = createLogger('wallet-service');
+const auditLogger = createLogger('wallet-audit');
 
 export class WalletError extends Error {
   readonly status: ContentfulStatusCode;
@@ -120,7 +121,11 @@ export class WalletService {
           });
 
           if (!created) {
-            throw new WalletError('Failed to reserve transfer request', 500, 'idempotency_reservation_failed');
+            throw new WalletError(
+              'Failed to reserve transfer request',
+              500,
+              'idempotency_reservation_failed',
+            );
           }
 
           return { record: created, created: true } as const;
@@ -132,7 +137,11 @@ export class WalletService {
               idempotencyKeyHash,
             );
             if (!concurrent) {
-              throw new WalletError('Failed to reserve transfer request', 500, 'idempotency_reservation_failed');
+              throw new WalletError(
+                'Failed to reserve transfer request',
+                500,
+                'idempotency_reservation_failed',
+              );
             }
 
             this.ensureMatchingIdempotentPayload(
@@ -154,6 +163,14 @@ export class WalletService {
         if (reservation.status === 'completed' && reservation.transactionHash) {
           logger.info('Returning cached transfer result', {
             userId: numericUserId,
+            transactionHash: reservation.transactionHash,
+          });
+
+          auditLogger.info('wallet transfer audit', {
+            source: 'cache',
+            userId: numericUserId,
+            amountBaseUnits: reservation.amount.toString(),
+            destinationAddress: reservation.destinationAddress,
             transactionHash: reservation.transactionHash,
           });
 
@@ -186,6 +203,14 @@ export class WalletService {
       logger.info('USDC transfer broadcast', {
         userId: numericUserId,
         destination: payload.destinationAddress,
+        transactionHash: tx.hash,
+      });
+
+      auditLogger.info('wallet transfer audit', {
+        source: 'broadcast',
+        userId: numericUserId,
+        amountBaseUnits: baseAmount.toString(),
+        destinationAddress: payload.destinationAddress,
         transactionHash: tx.hash,
       });
 
@@ -233,7 +258,11 @@ export class WalletService {
     }
 
     if (lowerMessage.includes('insufficientallowance')) {
-      return new WalletError('Insufficient allowance for USDC transfer', 400, 'insufficient_allowance');
+      return new WalletError(
+        'Insufficient allowance for USDC transfer',
+        400,
+        'insufficient_allowance',
+      );
     }
 
     if (lowerMessage.includes('caller is not the spender')) {
@@ -265,7 +294,11 @@ export class WalletService {
       lowerMessage.includes('service unavailable') ||
       lowerMessage.includes('gateway timeout')
     ) {
-      return new WalletError('Flow network unavailable, please retry later', 504, 'provider_unavailable');
+      return new WalletError(
+        'Flow network unavailable, please retry later',
+        504,
+        'provider_unavailable',
+      );
     }
 
     if (lowerMessage.includes('timeout') || lowerMessage.includes('network error')) {
@@ -312,7 +345,11 @@ export class WalletService {
       existing.amount !== expectedAmount ||
       existing.destinationAddress.toLowerCase() !== destinationAddress.toLowerCase()
     ) {
-      throw new WalletError('Idempotency key already used with different payload', 409, 'idempotency_conflict');
+      throw new WalletError(
+        'Idempotency key already used with different payload',
+        409,
+        'idempotency_conflict',
+      );
     }
   }
 
