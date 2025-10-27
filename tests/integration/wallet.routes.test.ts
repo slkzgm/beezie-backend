@@ -133,6 +133,40 @@ describe('Wallet routes', () => {
     expect(typeof json.requestId).toBe('string');
   });
 
+  test('maps rate limited errors to 429 and exposes code', async () => {
+    const { walletService, WalletError } = await import('@/services/wallet.service');
+    spyOn(walletService, 'transferUsdc').mockRejectedValue(
+      new WalletError('Flow network rate limited, please retry later', 429, 'rate_limited'),
+    );
+
+    const tokenModule = await import('@/services/token.service');
+    spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
+      sub: '1',
+      tokenType: 'access',
+    });
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+      },
+      body: JSON.stringify({
+        amount: '1.5',
+        destinationAddress: '0x0000000000000000000000000000000000000002',
+      }),
+    });
+
+    expect(response.status).toBe(429);
+    const json = (await response.json()) as { code: string; message: string; requestId?: string };
+    expect(json.code).toBe('rate_limited');
+    expect(json.message).toBe('Flow network rate limited, please retry later');
+    expect(typeof json.requestId).toBe('string');
+  });
+
   test('rejects when payload validation fails', async () => {
     const tokenModule = await import('@/services/token.service');
     spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
