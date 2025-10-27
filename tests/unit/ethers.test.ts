@@ -4,10 +4,7 @@ import '../setup';
 
 import { FetchResponse } from 'ethers';
 
-import {
-  ResilientJsonRpcProvider,
-  createResilientProviderOptions,
-} from '@/lib/ethers';
+import { ResilientJsonRpcProvider, createResilientProviderOptions } from '@/lib/ethers';
 
 describe('ResilientJsonRpcProvider', () => {
   test('configures timeout, retries, and retryable responses', async () => {
@@ -21,8 +18,15 @@ describe('ResilientJsonRpcProvider', () => {
 
     const request = connection as unknown as {
       timeout: number;
-      processFunc?: (req: unknown, response: FetchResponse) => Promise<FetchResponse>;
-      retryFunc?: (req: unknown, response: FetchResponse, attempt: number) => Promise<boolean>;
+      processFunc?: (
+        req: unknown,
+        response: FetchResponse,
+      ) => FetchResponse | Promise<FetchResponse>;
+      retryFunc?: (
+        req: unknown,
+        response: FetchResponse,
+        attempt: number,
+      ) => boolean | Promise<boolean>;
     };
 
     expect(request.timeout).toBe(options.requestTimeoutMs);
@@ -30,6 +34,7 @@ describe('ResilientJsonRpcProvider', () => {
     if (!request.processFunc) {
       throw new Error('processFunc not configured');
     }
+    const processFunc = request.processFunc;
 
     const retryableResponse = new FetchResponse(
       503,
@@ -39,26 +44,24 @@ describe('ResilientJsonRpcProvider', () => {
       connection as never,
     );
 
-    await expect(request.processFunc(connection, retryableResponse)).rejects.toMatchObject({
-      throttle: true,
-    });
+    expect(() => processFunc(connection, retryableResponse)).toThrowError(
+      expect.objectContaining({ throttle: true }),
+    );
 
     const nonRetryableResponse = new FetchResponse(404, 'Not Found', {}, null, connection as never);
-    await expect(request.processFunc(connection, nonRetryableResponse)).resolves.toBe(
-      nonRetryableResponse,
-    );
+    const processed = await processFunc(connection, nonRetryableResponse);
+    expect(processed).toBe(nonRetryableResponse);
 
     if (!request.retryFunc) {
       throw new Error('retryFunc not configured');
     }
+    const retryFunc = request.retryFunc;
 
-    const allowRetry = await request.retryFunc(connection, retryableResponse, 0);
+    const allowRetry = await Promise.resolve(retryFunc(connection, retryableResponse, 0));
     expect(allowRetry).toBe(true);
 
-    const denyRetry = await request.retryFunc(
-      connection,
-      retryableResponse,
-      options.maxAttempts - 1,
+    const denyRetry = await Promise.resolve(
+      retryFunc(connection, retryableResponse, options.maxAttempts - 1),
     );
     expect(denyRetry).toBe(false);
   });

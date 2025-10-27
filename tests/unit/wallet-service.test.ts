@@ -175,34 +175,33 @@ describe('WalletService.transferUsdc', () => {
 
   test('cleans up reservation when transfer fails', async () => {
     const reservations = new Map<string, TransferRequest>();
-    const createOverride = mock<WalletServiceDependencies['createTransferRequest']>(
-      async (_db, data) => {
-        const record: TransferRequest = {
-          id: 42,
-          userId: data.userId,
-          idempotencyKeyHash: data.idempotencyKeyHash,
-          amount: data.amount,
-          destinationAddress: data.destinationAddress,
-          transactionHash: null,
-          status: 'pending',
-          createdAt: new Date(),
-        };
-        reservations.set(data.idempotencyKeyHash, record);
-        return record;
-      },
-    );
+    const createOverride = mock<WalletServiceDependencies['createTransferRequest']>((_db, data) => {
+      const record: TransferRequest = {
+        id: 42,
+        userId: data.userId,
+        idempotencyKeyHash: data.idempotencyKeyHash,
+        amount: data.amount,
+        destinationAddress: data.destinationAddress,
+        transactionHash: null,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+      reservations.set(data.idempotencyKeyHash, record);
+      return Promise.resolve(record);
+    });
 
     const findOverride = mock<WalletServiceDependencies['findTransferRequest']>(
-      async (_db, _userId, keyHash) => reservations.get(keyHash) ?? null,
+      (_db, _userId, keyHash) => Promise.resolve(reservations.get(keyHash) ?? null),
     );
 
-    const deleteSpy = mock<WalletServiceDependencies['deleteTransferRequest']>(async (_db, id) => {
+    const deleteSpy = mock<WalletServiceDependencies['deleteTransferRequest']>((_db, id) => {
       for (const [key, value] of reservations.entries()) {
         if (value.id === id) {
           reservations.delete(key);
           break;
         }
       }
+      return Promise.resolve();
     });
 
     const { service } = createService({
@@ -217,9 +216,12 @@ describe('WalletService.transferUsdc', () => {
       deleteTransferRequest: deleteSpy,
     });
 
-    await expect(service.transferUsdc(mockDb, basePayload, '1', 'key')).rejects.toThrow(
-      'Insufficient USDC balance',
-    );
+    try {
+      await service.transferUsdc(mockDb, basePayload, '1', 'key');
+      throw new Error('Expected transferUsdc to reject');
+    } catch (error) {
+      expect((error as WalletError).message).toBe('Insufficient USDC balance');
+    }
     expect(createOverride.mock.calls.length).toBe(1);
     expect(deleteSpy.mock.calls.length).toBe(1);
     expect(reservations.size).toBe(0);
@@ -227,34 +229,33 @@ describe('WalletService.transferUsdc', () => {
 
   test('cleans up reservation when broadcast throws', async () => {
     const reservations = new Map<string, TransferRequest>();
-    const createOverride = mock<WalletServiceDependencies['createTransferRequest']>(
-      async (_db, data) => {
-        const record: TransferRequest = {
-          id: 99,
-          userId: data.userId,
-          idempotencyKeyHash: data.idempotencyKeyHash,
-          amount: data.amount,
-          destinationAddress: data.destinationAddress,
-          transactionHash: null,
-          status: 'pending',
-          createdAt: new Date(),
-        };
-        reservations.set(data.idempotencyKeyHash, record);
-        return record;
-      },
-    );
+    const createOverride = mock<WalletServiceDependencies['createTransferRequest']>((_db, data) => {
+      const record: TransferRequest = {
+        id: 99,
+        userId: data.userId,
+        idempotencyKeyHash: data.idempotencyKeyHash,
+        amount: data.amount,
+        destinationAddress: data.destinationAddress,
+        transactionHash: null,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+      reservations.set(data.idempotencyKeyHash, record);
+      return Promise.resolve(record);
+    });
 
     const findOverride = mock<WalletServiceDependencies['findTransferRequest']>(
-      async (_db, _userId, keyHash) => reservations.get(keyHash) ?? null,
+      (_db, _userId, keyHash) => Promise.resolve(reservations.get(keyHash) ?? null),
     );
 
-    const deleteSpy = mock<WalletServiceDependencies['deleteTransferRequest']>(async (_db, id) => {
+    const deleteSpy = mock<WalletServiceDependencies['deleteTransferRequest']>((_db, id) => {
       for (const [key, value] of reservations.entries()) {
         if (value.id === id) {
           reservations.delete(key);
           break;
         }
       }
+      return Promise.resolve();
     });
 
     const { service } = createService({
@@ -269,9 +270,12 @@ describe('WalletService.transferUsdc', () => {
       deleteTransferRequest: deleteSpy,
     });
 
-    await expect(service.transferUsdc(mockDb, basePayload, '1', 'key')).rejects.toThrow(
-      'Flow network timeout, please retry later',
-    );
+    try {
+      await service.transferUsdc(mockDb, basePayload, '1', 'key');
+      throw new Error('Expected transferUsdc to reject');
+    } catch (error) {
+      expect((error as WalletError).message).toBe('Flow network timeout, please retry later');
+    }
     expect(createOverride.mock.calls.length).toBe(1);
     expect(deleteSpy.mock.calls.length).toBe(1);
     expect(reservations.size).toBe(0);
@@ -480,7 +484,7 @@ describe('WalletService.transferUsdc', () => {
 
     const { service } = createService();
     const originalInfo = console.info;
-    const infoSpy = mock((..._args: unknown[]) => {});
+    const infoSpy = mock<(message: string, payload: Record<string, unknown>) => void>(() => {});
     console.info = infoSpy as typeof console.info;
 
     try {
@@ -491,13 +495,15 @@ describe('WalletService.transferUsdc', () => {
       console.info = originalInfo;
     }
 
-    const auditLogs = infoSpy.mock.calls.filter((call) => {
-      const [, payload] = call as [string, Record<string, unknown>];
-      return payload?.namespace === 'wallet-audit';
-    });
+    const auditLogs: Array<[string, Record<string, unknown>]> = [];
+    for (const [rawMessage, payload] of infoSpy.mock.calls) {
+      if (payload.namespace === 'wallet-audit') {
+        auditLogs.push([rawMessage, payload]);
+      }
+    }
 
     expect(auditLogs.length).toBe(1);
-    const [message, payload] = auditLogs[0] as [string, Record<string, unknown>];
+    const [message, payload] = auditLogs[0]!;
     expect(message).toBe('wallet transfer audit');
     expect(payload).toMatchObject({
       source: 'broadcast',
@@ -535,7 +541,7 @@ describe('WalletService.transferUsdc', () => {
     });
 
     const originalInfo = console.info;
-    const infoSpy = mock((..._args: unknown[]) => {});
+    const infoSpy = mock<(message: string, payload: Record<string, unknown>) => void>(() => {});
     console.info = infoSpy as typeof console.info;
 
     try {
@@ -546,13 +552,15 @@ describe('WalletService.transferUsdc', () => {
       console.info = originalInfo;
     }
 
-    const auditLogs = infoSpy.mock.calls.filter((call) => {
-      const [, payload] = call as [string, Record<string, unknown>];
-      return payload?.namespace === 'wallet-audit';
-    });
+    const auditLogs: Array<[string, Record<string, unknown>]> = [];
+    for (const [rawMessage, payload] of infoSpy.mock.calls) {
+      if (payload.namespace === 'wallet-audit') {
+        auditLogs.push([rawMessage, payload]);
+      }
+    }
 
     expect(auditLogs.length).toBe(1);
-    const [message, payload] = auditLogs[0] as [string, Record<string, unknown>];
+    const [message, payload] = auditLogs[0]!;
     expect(message).toBe('wallet transfer audit');
     expect(payload).toMatchObject({
       source: 'cache',

@@ -1,11 +1,5 @@
-import {
-  FetchRequest,
-  JsonRpcProvider,
-  type FetchResponse,
-  type Signer,
-  Wallet,
-  isHexString,
-} from 'ethers';
+import type { FetchRequest, FetchResponse, Signer } from 'ethers';
+import { JsonRpcProvider, Wallet, isHexString } from 'ethers';
 
 import { env } from '@/config/env';
 import { createLogger } from '@/utils/logger';
@@ -30,7 +24,10 @@ const createDefaultResilientOptions = (): ResilientProviderOptions => ({
 });
 
 class ResilientJsonRpcProvider extends JsonRpcProvider {
-  constructor(url: string, private readonly options: ResilientProviderOptions) {
+  constructor(
+    url: string,
+    private readonly options: ResilientProviderOptions,
+  ) {
     super(url);
   }
 
@@ -48,7 +45,7 @@ class ResilientJsonRpcProvider extends JsonRpcProvider {
       slotInterval: this.options.slotIntervalMs,
     });
 
-    request.retryFunc = async (_req, response, attempt) => {
+    request.retryFunc = (_req, response, attempt) => {
       const shouldRetry = attempt + 1 < this.options.maxAttempts;
       if (!shouldRetry) {
         logger.error('Flow RPC retry limit reached', {
@@ -61,13 +58,13 @@ class ResilientJsonRpcProvider extends JsonRpcProvider {
           statusCode: response.statusCode,
         });
       }
-      return shouldRetry;
+      return Promise.resolve(shouldRetry);
     };
 
-    request.processFunc = async (req, response) => this.processResponse(req, response);
+    request.processFunc = (req, response) => Promise.resolve(this.processResponse(req, response));
   }
 
-  private async processResponse(request: FetchRequest, response: FetchResponse) {
+  private processResponse(request: FetchRequest, response: FetchResponse) {
     if (!response.ok() && this.shouldRetry(response.statusCode)) {
       logger.warn('Flow RPC response marked retryable', {
         statusCode: response.statusCode,
@@ -80,7 +77,7 @@ class ResilientJsonRpcProvider extends JsonRpcProvider {
     return response;
   }
 
-  protected override _getConnection(): FetchRequest {
+  override _getConnection(): FetchRequest {
     const connection = super._getConnection();
     connection.timeout = this.options.requestTimeoutMs;
     this.configureRetries(connection);

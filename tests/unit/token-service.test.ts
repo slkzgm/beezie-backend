@@ -158,11 +158,14 @@ describe('tokenService', () => {
   test('verifies refresh tokens signed with additional public keys', async () => {
     const { TokenService } = await loadTokenService();
 
-    const { privateKey: legacyPrivateKey, publicKey: legacyPublicKey } = generateKeyPairSync('rsa', {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    });
+    const { privateKey: legacyPrivateKey, publicKey: legacyPublicKey } = generateKeyPairSync(
+      'rsa',
+      {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      },
+    );
 
     const mutableEnv = env as unknown as {
       jwt: typeof env.jwt & {

@@ -26,11 +26,7 @@ export const markRefreshTokensRotatedForUser = async (
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.rotatedAt)));
 };
 
-export const markRefreshTokenReused = async (
-  db: Database,
-  tokenHash: string,
-  reusedAt: Date,
-) => {
+export const markRefreshTokenReused = async (db: Database, tokenHash: string, reusedAt: Date) => {
   await db
     .update(refreshTokens)
     .set({ reusedAt, rotatedAt: reusedAt })

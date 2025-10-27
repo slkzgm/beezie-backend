@@ -35,22 +35,19 @@ let issueResult: {
   refreshPayload: RefreshTokenPayload;
 } | null = null;
 
-const findRefreshTokenByHash = async (_db: Database, tokenHash: string) =>
-  storedTokens.get(tokenHash) ?? null;
+const findRefreshTokenByHash = (_db: Database, tokenHash: string) =>
+  Promise.resolve(storedTokens.get(tokenHash) ?? null);
 
-const markRefreshTokensRotatedForUser = async (
-  _db: Database,
-  userId: number,
-  rotatedAt: Date,
-) => {
+const markRefreshTokensRotatedForUser = (_db: Database, userId: number, rotatedAt: Date) => {
   for (const token of storedTokens.values()) {
     if (token.userId === userId && token.rotatedAt === null) {
       token.rotatedAt = rotatedAt;
     }
   }
+  return Promise.resolve();
 };
 
-const markRefreshTokenReused = async (_db: Database, tokenHash: string, reusedAt: Date) => {
+const markRefreshTokenReused = (_db: Database, tokenHash: string, reusedAt: Date) => {
   const token = storedTokens.get(tokenHash);
   if (token) {
     token.reusedAt = reusedAt;
@@ -58,9 +55,10 @@ const markRefreshTokenReused = async (_db: Database, tokenHash: string, reusedAt
       token.rotatedAt = reusedAt;
     }
   }
+  return Promise.resolve();
 };
 
-const createRefreshToken = async (
+const createRefreshToken = (
   _db: Database,
   data: {
     userId: number;
@@ -80,24 +78,24 @@ const createRefreshToken = async (
     createdAt: new Date(),
   };
   storedTokens.set(record.tokenHash, record);
-  return record;
+  return Promise.resolve(record);
 };
 
 const usersRepositoryStub = {
-  async findUserById(_db: Database, id: number) {
-    return id === userRecord.id ? { ...userRecord } : null;
+  findUserById(_db: Database, id: number) {
+    return Promise.resolve(id === userRecord.id ? { ...userRecord } : null);
   },
-  async findUserByEmail() {
-    return null;
+  findUserByEmail() {
+    return Promise.resolve(null);
   },
-  async createUser() {
-    return null;
+  createUser() {
+    return Promise.resolve(null);
   },
 };
 
 const walletsRepositoryStub = {
-  async createWallet() {
-    return null;
+  createWallet() {
+    return Promise.resolve(null);
   },
 };
 
@@ -106,41 +104,40 @@ const refreshTokensRepositoryStub = {
   markRefreshTokensRotatedForUser,
   markRefreshTokenReused,
   createRefreshToken,
-  async deleteRefreshToken() {
-    return true;
+  deleteRefreshToken() {
+    return Promise.resolve(true);
   },
-  async deleteRefreshTokensByUserId() {
-    return 0;
+  deleteRefreshTokensByUserId() {
+    return Promise.resolve(0);
   },
 };
 
-const withTransactionStub = async <T>(_db: Database, handler: (tx: Database) => Promise<T>) => {
-  return handler({} as Database);
-};
+const withTransactionStub = <T>(_db: Database, handler: (tx: Database) => Promise<T>) =>
+  handler({} as Database);
 
 const tokenServiceStub = {
-  async verifyRefreshToken(token: string) {
+  verifyRefreshToken(token: string) {
     if (!verifyResult) {
       throw new Error(`Unexpected token verification for ${token}`);
     }
-    return verifyResult;
+    return Promise.resolve(verifyResult);
   },
-  async issueTokens() {
+  issueTokens() {
     if (!issueResult) {
       throw new Error('issueTokens called without fixture');
     }
-    return issueResult;
+    return Promise.resolve(issueResult);
   },
 };
 
-mock.module('@/db/repositories', () => ({
+void mock.module('@/db/repositories', () => ({
   users: usersRepositoryStub,
   wallets: walletsRepositoryStub,
   refreshTokens: refreshTokensRepositoryStub,
   withTransaction: withTransactionStub,
 }));
 
-mock.module('@/services/token.service', () => ({
+void mock.module('@/services/token.service', () => ({
   tokenService: tokenServiceStub,
 }));
 
@@ -231,9 +228,12 @@ describe('AuthService.refreshSession', () => {
 
     const { authService } = await authModulePromise;
 
-    await expect(authService.refreshSession({} as Database, refreshToken)).rejects.toMatchObject({
-      code: 'refresh_token_reused',
-    });
+    try {
+      await authService.refreshSession({} as Database, refreshToken);
+      throw new Error('Expected refreshSession to reject');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'refresh_token_reused' });
+    }
 
     const record = storedTokens.get(refreshHash);
     expect(record?.reusedAt).toBeInstanceOf(Date);
