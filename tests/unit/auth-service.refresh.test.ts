@@ -117,9 +117,7 @@ const withTransactionStub = <T>(_db: Database, handler: (tx: Database) => Promis
 
 const tokenServiceStub = {
   verifyRefreshToken(token: string) {
-    if (!verifyResult) {
-      throw new Error(`Unexpected token verification for ${token}`);
-    }
+    void token;
     return Promise.resolve(verifyResult);
   },
   issueTokens() {
@@ -237,5 +235,34 @@ describe('AuthService.refreshSession', () => {
 
     const record = storedTokens.get(refreshHash);
     expect(record?.reusedAt).toBeInstanceOf(Date);
+  });
+
+  test('rejects refresh tokens with invalid signature', async () => {
+    const { authService } = await authModulePromise;
+
+    try {
+      await authService.refreshSession({} as Database, 'invalid-signature-token');
+      throw new Error('Expected refreshSession to reject');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'invalid_refresh_token', status: 401 });
+    }
+  });
+
+  test('rejects refresh tokens with non-numeric subject', async () => {
+    verifyResult = {
+      sub: 'not-an-integer',
+      tokenType: 'refresh',
+      jti: 'jti',
+      exp: Math.floor(Date.now() / 1000) + 60,
+    } as RefreshTokenPayload;
+
+    const { authService } = await authModulePromise;
+
+    try {
+      await authService.refreshSession({} as Database, 'bad-sub-token');
+      throw new Error('Expected refreshSession to reject');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'invalid_refresh_token', status: 401 });
+    }
   });
 });

@@ -253,4 +253,102 @@ describe('Wallet routes', () => {
     expect(response.headers.get('idempotency-key')).toBe('unique-key');
     expect(response.headers.get('x-idempotency-warning')).toBeNull();
   });
+
+  test('returns cached transaction hash on idempotent replay', async () => {
+    const { walletService } = await import('@/services/wallet.service');
+    const transferSpy = spyOn(walletService, 'transferUsdc');
+    transferSpy.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: 'completed',
+        transactionHash: '0xreused',
+      }),
+    );
+    transferSpy.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: 'completed',
+        transactionHash: '0xreused',
+      }),
+    );
+
+    const tokenModule = await import('@/services/token.service');
+    spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
+      sub: '1',
+      tokenType: 'access',
+    });
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const payload = {
+      amount: '1.5',
+      destinationAddress: '0x0000000000000000000000000000000000000002',
+    };
+
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer token',
+      'Idempotency-Key': 'replay-key',
+    };
+
+    const first = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    expect(first.status).toBe(202);
+
+    const second = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    expect(second.status).toBe(202);
+    const secondJson = (await second.json()) as {
+      transactionHash: string;
+      idempotencyKey: string | null;
+    };
+    expect(secondJson.transactionHash).toBe('0xreused');
+    expect(secondJson.idempotencyKey).toBe('replay-key');
+    expect(transferSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('returns 409 envelope when idempotent payload conflicts', async () => {
+    const { walletService, WalletError } = await import('@/services/wallet.service');
+    spyOn(walletService, 'transferUsdc').mockRejectedValue(
+      new WalletError(
+        'Idempotency key already used with different payload',
+        409,
+        'idempotency_conflict',
+      ),
+    );
+
+    const tokenModule = await import('@/services/token.service');
+    spyOn(tokenModule.tokenService, 'verifyAccessToken').mockResolvedValue({
+      sub: '1',
+      tokenType: 'access',
+    });
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/wallet/transfer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token',
+        'Idempotency-Key': 'conflict-key',
+      },
+      body: JSON.stringify({
+        amount: '2.0',
+        destinationAddress: '0x0000000000000000000000000000000000000003',
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    const json = (await response.json()) as { code: string; message: string; requestId?: string };
+    expect(json.code).toBe('idempotency_conflict');
+    expect(json.message).toBe('Idempotency key already used with different payload');
+    expect(typeof json.requestId).toBe('string');
+  });
 });
