@@ -7,6 +7,8 @@ process.env.DATABASE_URL =
   process.env.DATABASE_URL ?? 'mysql://user:pass@localhost:3306/beezie_test';
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '15m';
 process.env.JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+process.env.JWT_ISSUER = process.env.JWT_ISSUER ?? 'beezie-api-test';
+process.env.JWT_AUDIENCE = process.env.JWT_AUDIENCE ?? 'beezie-clients-test';
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? '0123456789abcdef0123456789abcdef';
 process.env.FLOW_ACCESS_API = process.env.FLOW_ACCESS_API ?? 'http://localhost:8545';
 process.env.FLOW_USDC_CONTRACT_ADDRESS =

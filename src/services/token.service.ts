@@ -56,7 +56,10 @@ export class TokenService {
     const signer = new SignJWT({ tokenType, ...extraClaims })
       .setProtectedHeader({ alg: ALGORITHM })
       .setSubject(String(userId))
+      .setIssuer(env.jwt.issuer)
+      .setAudience(env.jwt.audience)
       .setIssuedAt()
+      .setNotBefore('0s')
       .setExpirationTime(ttl);
 
     // The jose typings expose a flexible KeyLike union which trips the type checker.
@@ -103,6 +106,8 @@ export class TokenService {
       const publicKey = await this.getPublicKey();
       const verification = await jwtVerify(token, publicKey as never, {
         algorithms: [ALGORITHM],
+        issuer: env.jwt.issuer,
+        audience: env.jwt.audience,
       });
       const payload = verification.payload as JWTPayload & {
         tokenType?: TokenType;
@@ -126,6 +131,8 @@ export class TokenService {
       const publicKey = await this.getPublicKey();
       const verification = await jwtVerify(token, publicKey as never, {
         algorithms: [ALGORITHM],
+        issuer: env.jwt.issuer,
+        audience: env.jwt.audience,
       });
       const payload = verification.payload as JWTPayload & {
         tokenType?: TokenType;
