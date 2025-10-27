@@ -225,6 +225,58 @@ describe('WalletService.transferUsdc', () => {
     expect(reservations.size).toBe(0);
   });
 
+  test('cleans up reservation when broadcast throws', async () => {
+    const reservations = new Map<string, TransferRequest>();
+    const createOverride = mock<WalletServiceDependencies['createTransferRequest']>(
+      async (_db, data) => {
+        const record: TransferRequest = {
+          id: 99,
+          userId: data.userId,
+          idempotencyKeyHash: data.idempotencyKeyHash,
+          amount: data.amount,
+          destinationAddress: data.destinationAddress,
+          transactionHash: null,
+          status: 'pending',
+          createdAt: new Date(),
+        };
+        reservations.set(data.idempotencyKeyHash, record);
+        return record;
+      },
+    );
+
+    const findOverride = mock<WalletServiceDependencies['findTransferRequest']>(
+      async (_db, _userId, keyHash) => reservations.get(keyHash) ?? null,
+    );
+
+    const deleteSpy = mock<WalletServiceDependencies['deleteTransferRequest']>(async (_db, id) => {
+      for (const [key, value] of reservations.entries()) {
+        if (value.id === id) {
+          reservations.delete(key);
+          break;
+        }
+      }
+    });
+
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(2_000_000n)),
+          transfer: mock(() => Promise.reject(new Error('timeout exceeded'))),
+        }),
+      ),
+      findTransferRequest: findOverride,
+      createTransferRequest: createOverride,
+      deleteTransferRequest: deleteSpy,
+    });
+
+    await expect(service.transferUsdc(mockDb, basePayload, '1', 'key')).rejects.toThrow(
+      'Flow network timeout, please retry later',
+    );
+    expect(createOverride.mock.calls.length).toBe(1);
+    expect(deleteSpy.mock.calls.length).toBe(1);
+    expect(reservations.size).toBe(0);
+  });
+
   test('maps nonce too low errors to 400', () => {
     const { service } = createService({
       getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>

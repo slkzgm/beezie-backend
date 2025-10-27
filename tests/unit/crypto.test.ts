@@ -27,12 +27,11 @@ describe('cryptoManager', () => {
     );
   });
 
-  test('throws when decrypt payload malformed', async () => {
-    const cryptoManager = await getCryptoManager();
-    expect(() => cryptoManager.decryptPrivateKey('invalid-payload')).toThrow(
-      'Encrypted key is malformed',
-    );
-  });
+test('throws when decrypt payload malformed', async () => {
+  const cryptoManager = await getCryptoManager();
+  expect(() => cryptoManager.decryptPrivateKey('invalid-payload')).toThrow(
+    'Encrypted key is malformed',
+  );
 });
 
   test('decrypts legacy v1 payloads', async () => {
@@ -41,3 +40,4 @@ describe('cryptoManager', () => {
     const decrypted = await cryptoManager.decryptPrivateKey(legacyPayload);
     expect(decrypted).toBe('legacy-secret-key');
   });
+});
