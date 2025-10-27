@@ -40,3 +40,7 @@ export const updateTransferRequest = async (
 ): Promise<void> => {
   await db.update(transferRequests).set(data).where(eq(transferRequests.id, id));
 };
+
+export const deleteTransferRequestById = async (db: Database, id: number): Promise<void> => {
+  await db.delete(transferRequests).where(eq(transferRequests.id, id));
+};

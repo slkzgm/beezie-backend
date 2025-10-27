@@ -46,6 +46,7 @@ export type WalletServiceDependencies = {
   findTransferRequest: typeof transferRequestsRepository.findByUserAndKeyHash;
   createTransferRequest: typeof transferRequestsRepository.createTransferRequest;
   updateTransferRequest: typeof transferRequestsRepository.updateTransferRequest;
+  deleteTransferRequest: typeof transferRequestsRepository.deleteTransferRequestById;
 };
 
 const defaultDependencies: WalletServiceDependencies = {
@@ -57,6 +58,7 @@ const defaultDependencies: WalletServiceDependencies = {
   findTransferRequest: transferRequestsRepository.findByUserAndKeyHash,
   createTransferRequest: transferRequestsRepository.createTransferRequest,
   updateTransferRequest: transferRequestsRepository.updateTransferRequest,
+  deleteTransferRequest: transferRequestsRepository.deleteTransferRequestById,
 };
 
 export class WalletService {
@@ -199,12 +201,17 @@ export class WalletService {
         transactionHash: tx.hash,
       };
     } catch (error: unknown) {
-      logger.error('USDC transfer failed', error instanceof Error ? error : { error });
-      if (error instanceof WalletError) {
-        throw error;
+      if (reservationCreated && reservation) {
+        await this.releaseReservation(db, reservation.id);
       }
 
-      throw this.mapContractError(error);
+      const normalizedError = error instanceof Error ? error : new Error('Wallet error');
+      logger.error('USDC transfer failed', normalizedError);
+      if (normalizedError instanceof WalletError) {
+        throw normalizedError;
+      }
+
+      throw this.mapContractError(normalizedError);
     }
   }
 
@@ -306,6 +313,15 @@ export class WalletService {
       existing.destinationAddress.toLowerCase() !== destinationAddress.toLowerCase()
     ) {
       throw new WalletError('Idempotency key already used with different payload', 409, 'idempotency_conflict');
+    }
+  }
+
+  private async releaseReservation(db: Database, reservationId: number) {
+    try {
+      await this.deps.deleteTransferRequest(db, reservationId);
+    } catch (cleanupError: unknown) {
+      const normalized = cleanupError instanceof Error ? cleanupError : new Error('Cleanup failed');
+      logger.warn('Failed to release idempotency reservation', normalized);
     }
   }
 

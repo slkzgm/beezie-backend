@@ -64,6 +64,9 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
   const updateTransferRequestMock = mock<WalletServiceDependencies['updateTransferRequest']>(() =>
     Promise.resolve(),
   );
+  const deleteTransferRequestMock = mock<WalletServiceDependencies['deleteTransferRequest']>(() =>
+    Promise.resolve(),
+  );
 
   const baseDeps: WalletServiceDependencies = {
     findWalletByUserId: mock<WalletServiceDependencies['findWalletByUserId']>(() =>
@@ -82,6 +85,7 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
     findTransferRequest: findTransferRequestMock,
     createTransferRequest: createTransferRequestMock,
     updateTransferRequest: updateTransferRequestMock,
+    deleteTransferRequest: deleteTransferRequestMock,
   };
 
   const deps: WalletServiceDependencies = { ...baseDeps, ...overrides };
@@ -95,6 +99,7 @@ const createService = (overrides: Partial<WalletServiceDependencies> = {}) => {
     findTransferRequestMock,
     createTransferRequestMock,
     updateTransferRequestMock,
+    deleteTransferRequestMock,
   };
 };
 
@@ -166,6 +171,58 @@ describe('WalletService.transferUsdc', () => {
 
     const transferPromise = service.transferUsdc(mockDb, basePayload, '1');
     return expect(transferPromise).rejects.toThrow('Insufficient allowance for USDC transfer');
+  });
+
+  test('cleans up reservation when transfer fails', async () => {
+    const reservations = new Map<string, TransferRequest>();
+    const createOverride = mock<WalletServiceDependencies['createTransferRequest']>(
+      async (_db, data) => {
+        const record: TransferRequest = {
+          id: 42,
+          userId: data.userId,
+          idempotencyKeyHash: data.idempotencyKeyHash,
+          amount: data.amount,
+          destinationAddress: data.destinationAddress,
+          transactionHash: null,
+          status: 'pending',
+          createdAt: new Date(),
+        };
+        reservations.set(data.idempotencyKeyHash, record);
+        return record;
+      },
+    );
+
+    const findOverride = mock<WalletServiceDependencies['findTransferRequest']>(
+      async (_db, _userId, keyHash) => reservations.get(keyHash) ?? null,
+    );
+
+    const deleteSpy = mock<WalletServiceDependencies['deleteTransferRequest']>(async (_db, id) => {
+      for (const [key, value] of reservations.entries()) {
+        if (value.id === id) {
+          reservations.delete(key);
+          break;
+        }
+      }
+    });
+
+    const { service } = createService({
+      getUsdcContract: mock<WalletServiceDependencies['getUsdcContract']>(() =>
+        makeContract({
+          balanceOf: mock(() => Promise.resolve(100n)),
+          transfer: mock(() => Promise.resolve({ hash: '0x0' })),
+        }),
+      ),
+      findTransferRequest: findOverride,
+      createTransferRequest: createOverride,
+      deleteTransferRequest: deleteSpy,
+    });
+
+    await expect(service.transferUsdc(mockDb, basePayload, '1', 'key')).rejects.toThrow(
+      'Insufficient USDC balance',
+    );
+    expect(createOverride.mock.calls.length).toBe(1);
+    expect(deleteSpy.mock.calls.length).toBe(1);
+    expect(reservations.size).toBe(0);
   });
 
   test('maps nonce too low errors to 400', () => {
