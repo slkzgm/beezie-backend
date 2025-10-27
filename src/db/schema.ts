@@ -21,9 +21,7 @@ export const users = mysqlTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  (table) => ({
-    emailIdx: uniqueIndex('users_email_idx').on(table.email),
-  }),
+  (table) => [uniqueIndex('users_email_idx').on(table.email)],
 );
 
 export const wallets = mysqlTable(
@@ -39,10 +37,10 @@ export const wallets = mysqlTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  (table) => ({
-    addressIdx: uniqueIndex('wallets_address_idx').on(table.address),
-    userIdx: index('wallets_user_idx').on(table.userId),
-  }),
+  (table) => [
+    uniqueIndex('wallets_address_idx').on(table.address),
+    index('wallets_user_idx').on(table.userId),
+  ],
 );
 
 export const refreshTokens = mysqlTable(
@@ -61,11 +59,11 @@ export const refreshTokens = mysqlTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  (table) => ({
-    tokenIdx: uniqueIndex('refresh_tokens_token_idx').on(table.tokenHash),
-    jwtIdx: uniqueIndex('refresh_tokens_jwt_idx').on(table.jwtId),
-    userIdx: index('refresh_tokens_user_idx').on(table.userId),
-  }),
+  (table) => [
+    uniqueIndex('refresh_tokens_token_idx').on(table.tokenHash),
+    uniqueIndex('refresh_tokens_jwt_idx').on(table.jwtId),
+    index('refresh_tokens_user_idx').on(table.userId),
+  ],
 );
 
 export const transferRequests = mysqlTable(
@@ -84,12 +82,9 @@ export const transferRequests = mysqlTable(
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
-  (table) => ({
-    userKeyIdx: uniqueIndex('transfer_requests_user_key_idx').on(
-      table.userId,
-      table.idempotencyKeyHash,
-    ),
-  }),
+  (table) => [
+    uniqueIndex('transfer_requests_user_key_idx').on(table.userId, table.idempotencyKeyHash),
+  ],
 );
 
 export type User = typeof users.$inferSelect;
