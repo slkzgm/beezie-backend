@@ -28,9 +28,7 @@ const basePayload = (namespace: string, level: LogLevel) => {
     namespace,
     level,
     timestamp: new Date().toISOString(),
-    ...(activeContext?.correlationId
-      ? { correlationId: activeContext.correlationId }
-      : {}),
+    ...(activeContext?.correlationId ? { correlationId: activeContext.correlationId } : {}),
   };
 };
 

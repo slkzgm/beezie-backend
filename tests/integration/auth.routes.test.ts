@@ -128,27 +128,26 @@ describe('Auth routes', () => {
 
     expect(response.status).toBe(400);
   });
-
 });
 
-  test('POST /auth/refresh rejects expired token', async () => {
-    const { authService, AuthError } = await import('@/services/auth.service');
-    spyOn(authService, 'refreshSession').mockRejectedValue(
-      new AuthError('Refresh token expired', 401, 'refresh_token_expired'),
-    );
+test('POST /auth/refresh rejects expired token', async () => {
+  const { authService, AuthError } = await import('@/services/auth.service');
+  spyOn(authService, 'refreshSession').mockRejectedValue(
+    new AuthError('Refresh token expired', 401, 'refresh_token_expired'),
+  );
 
-    const { createApp } = await import('@/app');
-    const app = createApp();
+  const { createApp } = await import('@/app');
+  const app = createApp();
 
-    const response = await app.request('/auth/refresh', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: 'expired' }),
-    });
-
-    expect(response.status).toBe(401);
-    const json = (await response.json()) as { code: string; message: string; requestId?: string };
-    expect(json.code).toBe('refresh_token_expired');
-    expect(json.message).toBe('Refresh token expired');
-    expect(typeof json.requestId).toBe('string');
+  const response = await app.request('/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: 'expired' }),
   });
+
+  expect(response.status).toBe(401);
+  const json = (await response.json()) as { code: string; message: string; requestId?: string };
+  expect(json.code).toBe('refresh_token_expired');
+  expect(json.message).toBe('Refresh token expired');
+  expect(typeof json.requestId).toBe('string');
+});
