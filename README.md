@@ -1,145 +1,141 @@
 # Beezie Backend
 
-Backend bootstrap for the Beezie assignment built with Bun, Hono, and Drizzle ORM. The codebase is intentionally structured to highlight production-ready practices (typed environment handling, layered architecture, automated linting/formatting, and dedicated configuration for database tooling and TypeChain).
+Backend API built for the Beezie technical exercise. It delivers authentication, encrypted wallet provisioning, and a Flow USDC transfer surface while showcasing production-focused patterns (idempotency, logger correlation, resilient RPC access, encrypted key storage).
 
-## Tech Stack
+## Deliverables at a Glance
 
-- Runtime: [Bun](https://bun.com) (ESM) + TypeScript
-- Framework: [Hono](https://hono.dev) with `@hono/zod-validator`
-- Schema validation: [Zod](https://zod.dev)
-- Database: MySQL via [Drizzle ORM](https://orm.drizzle.team) + `mysql2`
-- Auth & crypto: `jose` (JWT), `bcryptjs`, `ethers`
-- Tooling: ESLint (flat config), Prettier, Drizzle Kit, TypeChain (ethers-v6 target)
-
-## Getting Started
-
-1. Install dependencies:
-
-   ```bash
-   bun install
-   ```
-
-2. Copy the environment template and adjust values (un seul fichier `.env` alimente Bun et Docker Compose). Renseignez un hôte (`MYSQL_HOST`, par défaut `127.0.0.1`), le port, et gardez un `DATABASE_URL` pleinement résolu (sans `${VAR}`) :
-
-   ```bash
-   cp .env.example .env
-   # edit .env to set strong passwords, JWT keys, Flow config, etc.
-   ```
-
-3. Launch the development database (MySQL only; API runs locally in hot reload):
-
-   ```bash
- make dev-up
-  ```
-
-   Use `make dev-logs` to wait for the “ready for connections” message on first boot.
-
-   Tail logs with `make dev-logs` and stop with `make dev-down`.
-
-4. Run the development server with hot reload:
-
-   ```bash
-   bun run dev
-   ```
-
-5. Apply migrations from your host (uses the same `.env` values):
-
-   ```bash
-   make dev-migrate
-   ```
-
-6. Generate database SQL or migrations when the schema evolves:
-
-   ```bash
-   bun run drizzle:generate
-   ```
-
-   Then re-run `make dev-migrate` to apply the new SQL locally.
-
-7. Produce updated TypeChain typings after compiling Flow/USDC artifacts into `./artifacts`:
-
-   ```bash
-   bun run typechain
-   ```
-
-### Running everything in Docker (production profile)
-
-When you need the full stack running inside containers:
-
-1. Ensure `.env` is populated (same values as development).
-2. Build and start both services:
-   ```bash
-   make prod-up
-   ```
-3. Stream combined logs with `make prod-logs` as needed.
-4. Stop everything with `make prod-down`.
-
-## Available Scripts
-
-| Script | Description |
+| Requirement | Implementation |
 | --- | --- |
-| `bun run dev` | Run the API with Bun's watch mode. |
-| `bun run build` | Bundle the server into `dist/` for production. |
-| `bun run start` | Execute the compiled build. |
-| `bun run typecheck` | Static type analysis using `tsc --noEmit`. |
-| `bun run lint` / `bun run lint:fix` | ESLint (flat config) in strict mode. |
-| `bun run format` / `bun run format:check` | Prettier formatting helpers. |
-| `bun run drizzle:generate` | Generate SQL migrations using Drizzle Kit. |
-| `bun run drizzle:migrate` | Apply migrations to the configured database. |
-| `bun run typechain` | Generate typed contract factories from Flow/USDC artifacts. |
+| API Framework & Validation | Bun + Hono with Zod on every route (`src/routes`, `src/schemas`). |
+| Auth Flow | Signup & signin with bcrypt passwords, RS256 JWTs (`kid/iss/aud`), refresh token rotation & reuse detection. |
+| Protected Wallet Route | `/wallet/transfer` guarded by bearer tokens, supports idempotency + audit logging, broadcasts Flow USDC via TypeChain factory. |
+| Wallet Security | New `ethers` wallet per user; private keys encrypted with AES-256-GCM (`src/lib/crypto.ts`). |
+| Persistence | MySQL via Drizzle ORM; repositories layer encapsulates DB access. |
+| Tooling | Drizzle migrations, TypeChain typings, ESLint/Prettier, Bun test runner. |
 
-## Make Targets
+## Running the Project
 
-| Target | Description |
-| --- | --- |
-| `make dev-up` | Start the MySQL container only (hot-reload API still runs on the host). |
-| `make dev-down` | Stop and remove the development database container. |
-| `make dev-reset` | Stop the dev container and drop the bind volume (fresh database). |
-| `make dev-logs` | Tail the MySQL logs for local debugging. |
-| `make dev-migrate` | Run Drizzle migrations using the host Bun toolchain. |
-| `make db-shell` | Open an interactive MySQL shell inside the container. |
-| `make prod-up` | Build the image and run API + MySQL inside Docker (production profile). |
-| `make prod-down` | Stop the production stack. |
-| `make prod-logs` | Stream logs from API and database containers. |
-| `make prod-restart` | Rebuild and restart both services (production profile). |
+### Prerequisites
 
-## Project Structure
+- Bun ≥ 1.0.30
+- MySQL 8 (local or via Docker Compose)
+- Node-compatible OpenSSL (for crypto)
 
-```
-.
-├─ src/
-│  ├─ app.ts               # Hono instance, middlewares, route registration
-│  ├─ index.ts             # Entry point (bootstraps server)
-│  ├─ server.ts            # Bun server binding with centralized error handling
-│  ├─ config/              # Environment validation and runtime config
-│  ├─ controllers/         # Request handlers (auth, wallet)
-│  ├─ db/                  # Drizzle schema and MySQL client
-│  ├─ lib/                 # Crypto, ethers helpers, etc.
-│  ├─ middlewares/         # Cross-cutting middleware (JWT guard)
-│  ├─ routes/              # Hono router definitions
-│  ├─ schemas/             # Zod request payload schemas
-│  ├─ services/            # Business logic placeholders
-│  └─ utils/               # Small utilities (e.g. structured logger)
-├─ drizzle/                # Generated SQL migrations
-├─ drizzle.config.ts       # Drizzle Kit configuration
-├─ typechain.config.ts     # Shared TypeChain CLI configuration
-├─ bunfig.toml             # Bun alias configuration (`@/` → `src/`)
-├─ docker-compose.yml      # Multi-profile Docker stack (dev/prod)
-├─ Dockerfile              # Production image for the API
-├─ Makefile                # Helper commands for dev/prod flows
-└─ .env.example            # Environment template
+### Setup
+
+```bash
+cp .env.example .env        # fill credentials, keys, Flow config
+bun install
+
+# Start the MySQL container (optional but recommended)
+make dev-up
+
+# Apply database migrations
+make dev-migrate
+
+# Launch the API with hot reload
+bun run dev
 ```
 
-## Implementation Roadmap
+### Quality Gate
 
-- Wire up `authService`, `walletService`, and `tokenService` with Drizzle repositories once schemas are finalized.
-- Implement secure key management (derive AES key from `ENCRYPTION_KEY`, envelope-encrypt user wallets).
-- Integrate JWT signing/verification using `jose` and expose refresh token endpoints.
-- Fetch and compile Flow USDC artifacts, then run `bun run typechain` to generate strongly typed factories for transfers.
-- Expand automated tests (unit + integration) as business logic solidifies.
+```bash
+make verify    # typecheck + lint + prettier + bun test
+```
 
-## Quality Gates
+### Environment Reference
 
-- All source code is typed and linted; CI should at minimum run `bun run typecheck` and `bun run lint`.
-- Migrations are generated via Drizzle to keep schema changes auditable.
-- Environment variables are validated at startup; invalid configuration fails fast with actionable errors.
+| Variable | Description |
+| --- | --- |
+| `DATABASE_URL` | Full DSN (`mysql://user:pass@host:3306/db`). |
+| `MYSQL_*` | Used by Drizzle CLI / docker-compose (`MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`). |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | PEM-encoded RSA keys for RS256 signing/verification. |
+| `JWT_KEY_ID` | Identifier for the active signing key. |
+| `JWT_ADDITIONAL_PUBLIC_KEYS` | JSON array of `{ kid, publicKey }` to support legacy verification. |
+| `ENCRYPTION_KEY` | ≥32 character secret for AES-GCM wallet encryption. |
+| `FLOW_ACCESS_API` | Flow EVM JSON-RPC endpoint (e.g. `https://evm-testnet.flowscan.io/v1/<project-id>`). |
+| `FLOW_USDC_CONTRACT_ADDRESS` | Testnet USDC contract (42 hex chars). |
+
+Rotation example:
+
+```env
+JWT_ADDITIONAL_PUBLIC_KEYS=[{"kid":"legacy-key","publicKey":"-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----"}]
+```
+
+## API Surface
+
+### Auth
+
+| Endpoint | Notes |
+| --- | --- |
+| `POST /auth/sign-up` | Creates user + encrypted wallet, returns access/refresh tokens with expiry. |
+| `POST /auth/sign-in` | Validates credentials and rotates tokens. |
+| `POST /auth/refresh` | Exchanges refresh token; detects reuse (`401` with `code="refresh_token_reused"`) and expiry. |
+
+### Wallet
+
+| Endpoint | Notes |
+| --- | --- |
+| `POST /wallet/transfer` | Protected. Requires bearer token + `Idempotency-Key`. Broadcasts Flow USDC transfer and surfaces pending/cached states via `202` responses. |
+
+All error responses share `{ code, message, requestId }`. `requestId` mirrors the `X-Request-ID` header for log correlation.
+
+## Architecture Notes
+
+- **Layered design**: routes ➜ controllers ➜ services ➜ repositories. `withTransaction` ensures multi-step operations are ACID.
+- **Idempotency**: hashed keys stored in `transfer_requests`; mismatched payloads trigger `409 idempotency_conflict`. Cached completions echo the transaction hash and audit log entry.
+- **Wallet security**: AES-256-GCM with per-record salt/nonce, scrypt-derived key, and versioned payloads (supports future rotation).
+- **JWT hardening**: tokens include `kid`, `iss`, `aud`, and `nbf`. Verification enforces claims and supports additional public keys for rotation.
+- **Resilient Flow provider**: wraps `JsonRpcProvider` with timeouts, capped retries, exponential backoff, and structured logging.
+- **Observability**: correlation IDs (`X-Request-ID`), consistent error envelopes, CSP/HSTS headers, and dedicated `wallet-audit` namespace.
+
+## Testing
+
+`bun test` covers both units and integrations:
+
+- `tests/unit/token-service.test.ts`: JWT issuance, claim enforcement, multi-key verification.
+- `tests/unit/auth-service.refresh.test.ts`: refresh rotation, reuse detection, malformed tokens.
+- `tests/unit/wallet-service.test.ts`: idempotent reservations, error mapping, audit logging.
+- `tests/integration/auth.routes.test.ts`: route-level auth flows including reuse/expired refresh handling.
+- `tests/integration/wallet.routes.test.ts`: transfer replay, conflict, missing idempotency header warnings.
+- `tests/integration/security.headers.test.ts`: CSP/HSTS/permissions-policy smoke.
+
+## Database & Migrations
+
+- Schema defined in `src/db/schema.ts` (Drizzle).
+- Migrations generated via `bun run drizzle:generate` and committed in `drizzle/`.
+- `make dev-migrate` applies migrations using the same `.env` configuration as the application.
+
+## Wallet & Flow Integration
+
+1. On signup, `ethers.Wallet.createRandom()` generates a keypair.
+2. Private key is encrypted with `crypto.randomBytes` salt + AES-GCM; ciphertext stored in `wallets` table.
+3. `/wallet/transfer` decrypts the key, instantiates a signer, loads the TypeChain USDC factory, validates balance, and submits the transfer.
+4. RPC requests run through the resilient provider wrapper (timeouts/retries). Rate limits and 5xx responses map to `429`/`504` envelopes for clients.
+
+## Logging & Idempotency
+
+- `wallet-audit` logger emits `{ userId, amountBaseUnits, destinationAddress, transactionHash, source }` for reconciliation.
+- Missing `Idempotency-Key` headers trigger an `X-Idempotency-Warning` response header and log warning.
+- Successful transfers return `202` to reflect asynchronous broadcast behaviour.
+
+## Project Layout
+
+```
+src/
+  app.ts            # Hono setup, middleware (logger, CSP, CORS, correlation IDs)
+  controllers/      # Auth & wallet controllers
+  services/         # Auth/token/wallet business logic
+  db/               # Drizzle schema, repositories, transaction helper
+  lib/              # Crypto manager, resilient ethers provider
+  schemas/          # Zod schemas per route
+  utils/            # Logger, hash utilities, HTTP helpers
+drizzle/            # Generated migrations + metadata
+tests/              # Bun test suites (unit + integration)
+```
+
+## Evaluation Guidance
+
+- Populate `.env` from the template, run `make dev-up`, `make dev-migrate`, then `bun run dev` to exercise the API.
+- Tests and linting are automated via `make verify`.
+- The README focuses on the interviewer’s perspective; feel free to reach out for clarifications on design trade-offs or follow-up scenarios.
