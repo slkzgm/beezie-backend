@@ -40,9 +40,16 @@ describe('Wallet routes', () => {
     });
 
     expect(response.status).toBe(202);
-    const json = (await response.json()) as { transactionHash: string };
+    const json = (await response.json()) as {
+      transactionHash: string;
+      idempotencyKey: string | null;
+    };
     expect(json.transactionHash).toBe('0xtx');
+    expect(json.idempotencyKey).toBeNull();
     expect(response.headers.get('x-request-id')).toBeTruthy();
+    expect(response.headers.get('x-idempotency-warning')).toBe(
+      'Requests without Idempotency-Key may result in duplicate transfers',
+    );
   });
 
   test('POST /wallet/transfer surfaces pending status', async () => {
@@ -73,7 +80,11 @@ describe('Wallet routes', () => {
     expect(response.status).toBe(202);
     const json = (await response.json()) as Record<string, unknown>;
     expect(json.message).toBe('Transfer already in progress');
+    expect(json.idempotencyKey).toBeNull();
     expect(json).not.toHaveProperty('transactionHash');
+    expect(response.headers.get('x-idempotency-warning')).toBe(
+      'Requests without Idempotency-Key may result in duplicate transfers',
+    );
   });
 
   test('fails when auth guard rejects token', async () => {
@@ -232,5 +243,14 @@ describe('Wallet routes', () => {
       '1',
       'unique-key',
     );
+
+    const body = (await response.json()) as {
+      transactionHash: string;
+      idempotencyKey: string | null;
+    };
+    expect(body.transactionHash).toBe('0xabc');
+    expect(body.idempotencyKey).toBe('unique-key');
+    expect(response.headers.get('idempotency-key')).toBe('unique-key');
+    expect(response.headers.get('x-idempotency-warning')).toBeNull();
   });
 });

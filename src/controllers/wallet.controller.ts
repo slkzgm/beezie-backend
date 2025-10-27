@@ -18,18 +18,33 @@ export class WalletController {
 
     try {
       const db = ctx.get('db');
-      const idempotencyKey = ctx.req.header('Idempotency-Key') ?? undefined;
+      const incomingKey = ctx.req.header('Idempotency-Key');
+      const normalizedKey = incomingKey?.trim() || undefined;
+
+      if (!normalizedKey) {
+        logger.warn('Missing Idempotency-Key header; duplicate transfers possible', {
+          userId: ctx.get('userId'),
+        });
+        ctx.res.headers.set(
+          'X-Idempotency-Warning',
+          'Requests without Idempotency-Key may result in duplicate transfers',
+        );
+      } else {
+        ctx.res.headers.set('Idempotency-Key', normalizedKey);
+      }
+
       const result = await walletService.transferUsdc(
         db,
         payload,
         ctx.get('userId'),
-        idempotencyKey,
+        normalizedKey,
       );
 
       if (result.status === 'pending') {
         return ctx.json(
           {
             message: 'Transfer already in progress',
+            idempotencyKey: normalizedKey ?? null,
           },
           202,
         );
@@ -39,13 +54,15 @@ export class WalletController {
         {
           message: 'Transfer initiated',
           transactionHash: result.transactionHash,
+          idempotencyKey: normalizedKey ?? null,
         },
         202,
       );
     } catch (error: unknown) {
       const safeError = error instanceof Error ? error : new Error('Unknown wallet error');
       logger.error('USDC transfer failed', safeError);
-      const status: ContentfulStatusCode = safeError instanceof WalletError ? safeError.status : 500;
+      const status: ContentfulStatusCode =
+        safeError instanceof WalletError ? safeError.status : 500;
       const code = safeError instanceof WalletError ? safeError.code : 'internal_error';
       const message = safeError.message ?? 'Unable to process transfer';
       return sendErrorResponse(ctx, status, code, message);
