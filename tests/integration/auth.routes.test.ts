@@ -128,6 +128,28 @@ describe('Auth routes', () => {
 
     expect(response.status).toBe(400);
   });
+
+  test('POST /auth/refresh surfaces reuse envelope', async () => {
+    const { authService, AuthError } = await import('@/services/auth.service');
+    spyOn(authService, 'refreshSession').mockRejectedValue(
+      new AuthError('Refresh token reuse detected', 401, 'refresh_token_reused'),
+    );
+
+    const { createApp } = await import('@/app');
+    const app = createApp();
+
+    const response = await app.request('/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: 'reused-token' }),
+    });
+
+    expect(response.status).toBe(401);
+    const json = (await response.json()) as { code: string; message: string; requestId?: string };
+    expect(json.code).toBe('refresh_token_reused');
+    expect(json.message).toBe('Refresh token reuse detected');
+    expect(typeof json.requestId).toBe('string');
+  });
 });
 
 test('POST /auth/refresh rejects expired token', async () => {
