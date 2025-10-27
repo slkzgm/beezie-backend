@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import type { Database } from '@/db/types';
 import { refreshTokens } from '@/db/schema';
@@ -13,6 +13,28 @@ export const createRefreshToken = async (
 ): Promise<RefreshTokenRecord | null> => {
   await db.insert(refreshTokens).values(data);
   return findRefreshTokenByHash(db, data.tokenHash);
+};
+
+export const markRefreshTokensRotatedForUser = async (
+  db: Database,
+  userId: number,
+  rotatedAt: Date,
+) => {
+  await db
+    .update(refreshTokens)
+    .set({ rotatedAt })
+    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.rotatedAt)));
+};
+
+export const markRefreshTokenReused = async (
+  db: Database,
+  tokenHash: string,
+  reusedAt: Date,
+) => {
+  await db
+    .update(refreshTokens)
+    .set({ reusedAt, rotatedAt: reusedAt })
+    .where(eq(refreshTokens.tokenHash, tokenHash));
 };
 
 export const findRefreshTokenByHash = async (

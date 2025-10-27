@@ -96,13 +96,14 @@ export class AuthService {
         const issuedTokens = await tokenService.issueTokens(createdUser.id);
         const refreshExpiresAt = new Date(issuedTokens.refreshPayload.exp * 1000);
 
-        await refreshTokensRepository.deleteRefreshTokensByUserId(tx, createdUser.id);
+        await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, createdUser.id, new Date());
 
         const refreshTokenHash = sha256Hex(issuedTokens.refreshToken);
 
         await refreshTokensRepository.createRefreshToken(tx, {
           userId: createdUser.id,
           tokenHash: refreshTokenHash,
+          jwtId: issuedTokens.refreshPayload.jti,
           expiresAt: refreshExpiresAt,
         });
 
@@ -155,13 +156,14 @@ export class AuthService {
       const tokens = await tokenService.issueTokens(user.id);
       const refreshExpiresAt = new Date(tokens.refreshPayload.exp * 1000);
 
-      await refreshTokensRepository.deleteRefreshTokensByUserId(tx, user.id);
+      await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, user.id, new Date());
 
       const refreshTokenHash = sha256Hex(tokens.refreshToken);
 
       await refreshTokensRepository.createRefreshToken(tx, {
         userId: user.id,
         tokenHash: refreshTokenHash,
+        jwtId: tokens.refreshPayload.jti,
         expiresAt: refreshExpiresAt,
       });
 
@@ -187,7 +189,7 @@ export class AuthService {
     try {
       const verified = await tokenService.verifyRefreshToken(refreshToken);
 
-      if (!verified || !verified.sub) {
+      if (!verified || !verified.sub || !verified.jti) {
         throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
       }
 
@@ -205,25 +207,58 @@ export class AuthService {
           throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
         }
 
+        if (storedToken.jwtId !== verified.jti) {
+          logger.warn('Refresh token JTI mismatch detected', {
+            userId,
+            tokenHash: refreshHash,
+            expected: storedToken.jwtId,
+            received: verified.jti,
+          });
+          await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, storedToken.userId, new Date());
+          throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
+        }
+
+        if (storedToken.reusedAt) {
+          logger.warn('Refresh token reuse previously recorded', {
+            userId,
+            tokenHash: refreshHash,
+          });
+          await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, storedToken.userId, new Date());
+          throw new AuthError('Refresh token reuse detected', 401, 'refresh_token_reused');
+        }
+
+        if (storedToken.rotatedAt) {
+          logger.warn('Refresh token reuse detected', {
+            userId,
+            tokenHash: refreshHash,
+          });
+          const reuseTimestamp = new Date();
+          await refreshTokensRepository.markRefreshTokenReused(tx, refreshHash, reuseTimestamp);
+          await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, storedToken.userId, reuseTimestamp);
+          throw new AuthError('Refresh token reuse detected', 401, 'refresh_token_reused');
+        }
+
         if (storedToken.expiresAt.getTime() <= Date.now()) {
-          await refreshTokensRepository.deleteRefreshToken(tx, refreshHash);
+          await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, storedToken.userId, new Date());
           throw new AuthError('Refresh token expired', 401, 'refresh_token_expired');
         }
 
         const userRecord = await usersRepository.findUserById(tx, userId);
         if (!userRecord) {
-          await refreshTokensRepository.deleteRefreshToken(tx, refreshHash);
+          await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, storedToken.userId, new Date());
           throw new AuthError('Invalid refresh token', 401, 'invalid_refresh_token');
         }
+
+        const rotationTimestamp = new Date();
+        await refreshTokensRepository.markRefreshTokensRotatedForUser(tx, userRecord.id, rotationTimestamp);
 
         const tokens = await tokenService.issueTokens(userRecord.id);
         const refreshExpiresAt = new Date(tokens.refreshPayload.exp * 1000);
 
-        await refreshTokensRepository.deleteRefreshTokensByUserId(tx, userRecord.id);
-
         await refreshTokensRepository.createRefreshToken(tx, {
           userId: userRecord.id,
           tokenHash: sha256Hex(tokens.refreshToken),
+          jwtId: tokens.refreshPayload.jti,
           expiresAt: refreshExpiresAt,
         });
 

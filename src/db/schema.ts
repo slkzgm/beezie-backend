@@ -53,13 +53,17 @@ export const refreshTokens = mysqlTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    jwtId: varchar('jwt_id', { length: 64 }).notNull(),
     expiresAt: datetime('expires_at').notNull(),
+    rotatedAt: datetime('rotated_at'),
+    reusedAt: datetime('reused_at'),
     createdAt: datetime('created_at')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => ({
     tokenIdx: uniqueIndex('refresh_tokens_token_idx').on(table.tokenHash),
+    jwtIdx: uniqueIndex('refresh_tokens_jwt_idx').on(table.jwtId),
     userIdx: index('refresh_tokens_user_idx').on(table.userId),
   }),
 );
