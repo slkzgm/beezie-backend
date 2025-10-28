@@ -86,3 +86,5 @@ export const createLogger = (namespace: string) => ({
 export const runWithLoggerContext = <T>(context: LoggerContext, fn: () => Promise<T> | T) => {
   return contextStorage.run(context, fn);
 };
+
+export const getActiveCorrelationId = () => contextStorage.getStore()?.correlationId;

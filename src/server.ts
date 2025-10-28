@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 
 import type { AppEnv } from '@/types/app';
-import { createLogger } from '@/utils/logger';
+import { createLogger, getActiveCorrelationId } from '@/utils/logger';
 
 type ServerOptions = {
   port: number;
@@ -18,9 +18,24 @@ export const createServer = (app: Hono<AppEnv>, options: ServerOptions) => {
     error(error) {
       logger.error('Unhandled error', { error });
 
-      return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+      const requestId = getActiveCorrelationId();
+      const payload = {
+        code: 'internal_error',
+        message: 'Internal Server Error',
+        ...(requestId ? { requestId } : {}),
+      };
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (requestId) {
+        headers['X-Request-ID'] = requestId;
+      }
+
+      return new Response(JSON.stringify(payload), {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers,
       });
     },
   });

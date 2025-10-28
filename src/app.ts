@@ -10,6 +10,7 @@ import { getDb } from '@/db/client';
 import type { AppEnv } from '@/types/app';
 import { env } from '@/config/env';
 import { runWithLoggerContext } from '@/utils/logger';
+import { sendErrorResponse } from '@/utils/http';
 
 export const createApp = () => {
   const app = new Hono<AppEnv>();
@@ -74,14 +75,7 @@ export const createApp = () => {
   app.route('/auth', authRouter);
   app.route('/wallet', walletRouter);
 
-  app.notFound((ctx) =>
-    ctx.json(
-      {
-        error: 'Not Found',
-      },
-      404,
-    ),
-  );
+  app.notFound((ctx) => sendErrorResponse(ctx, 404, 'not_found', 'Resource not found'));
 
   return app;
 };
