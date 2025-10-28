@@ -33,6 +33,9 @@ make dev-up
 # Apply database migrations
 make dev-migrate
 
+# Prunes the dev stack, recreates MySQL, and reapplies migrations
+make dev-wipe
+
 # Launch the API with hot reload
 bun run dev
 ```
