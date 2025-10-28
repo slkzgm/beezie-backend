@@ -37,6 +37,55 @@ make dev-migrate
 bun run dev
 ```
 
+## Quickstart
+
+Spin up the API and exercise the core flows in under two minutes:
+
+1. Install dependencies:\
+   `bun install`
+2. Copy environment template and populate secrets:\
+   `cp .env.example .env`
+   - Generate fresh JWT keys (writes to `artifacts/jwt-keys/` and prints escaped values):
+     `scripts/generate-jwt-keys.sh`
+   - Paste the printed `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` values into `.env`.
+3. Start MySQL (Docker):\
+   `make dev-up`
+4. Apply migrations:\
+   `make dev-migrate`
+5. Start the API (keep running):\
+   `bun run dev`
+
+With the server listening on `http://127.0.0.1:3000`, use the following cURL snippets (requires `jq`) in a separate terminal:
+
+```bash
+API_BASE=http://127.0.0.1:3000
+PASSWORD='Passw0rd!234'
+
+# Create a demo user (run once; replace with your own credentials)
+curl -sS -X POST "$API_BASE/auth/sign-up" \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"demo@example.com\",\"password\":\"$PASSWORD\",\"passwordConfirmation\":\"$PASSWORD\",\"displayName\":\"Demo User\"}" | jq
+
+# Sign in and capture the access token
+ACCESS_TOKEN=$(
+  curl -sS -X POST "$API_BASE/auth/sign-in" \
+    -H 'Content-Type: application/json' \
+    -d "{\"email\":\"demo@example.com\",\"password\":\"$PASSWORD\"}" | jq -r '.accessToken'
+)
+
+# Kick off a wallet transfer (replace destination with a valid Flow EVM address)
+curl -sS -X POST "$API_BASE/wallet/transfer" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H 'Content-Type: application/json' \
+  -d '{"amount":"1.00","destinationAddress":"0x0000000000000000000000000000000000000001"}' | jq
+
+# Or run the self-contained script (auto-funds via faucet-account.txt or FLOW_FAUCET_PRIVATE_KEY):
+scripts/demo.sh
+# Re-run with an existing account by providing WALLET_ADDRESS and SKIP_FUNDING=1 if the wallet already has funds
+# WALLET_ADDRESS=0x... SKIP_FUNDING=1 scripts/demo.sh
+```
+
 ### Quality Gate
 
 ```bash
@@ -55,6 +104,9 @@ make verify    # typecheck + lint + prettier + bun test
 | `ENCRYPTION_KEY` | ≥32 character secret for AES-GCM wallet encryption. |
 | `FLOW_ACCESS_API` | Flow EVM JSON-RPC endpoint (e.g. `https://evm-testnet.flowscan.io/v1/<project-id>`). |
 | `FLOW_USDC_CONTRACT_ADDRESS` | Testnet USDC contract (42 hex chars). |
+| `FLOW_FAUCET_PRIVATE_KEY` | (Optional) Private key for the funded Flow EVM faucet account used in scripts. |
+| `FUND_FLOW_AMOUNT` | Default FLOW top-up amount for new wallets when using the demo script. |
+| `FUND_USDC_AMOUNT` | Default USDC top-up amount for new wallets when using the demo script. |
 
 Rotation example:
 
@@ -133,6 +185,16 @@ src/
 drizzle/            # Generated migrations + metadata
 tests/              # Bun test suites (unit + integration)
 ```
+
+## Docs & Testing
+
+- `.env.example` lists every required variable with sample values and comments for Flow, JWT, and encryption setup.
+- `docs/requests.http` provides REST Client examples for sign-up, sign-in, and wallet transfers (auto-captures tokens).
+- `scripts/demo.sh` runs an end-to-end sign-up/sign-in flow, auto-funds the generated wallet via `scripts/fund-wallet.ts`, and performs a transfer (requires `bun`, `jq`, and either `faucet-account.txt` or `FLOW_FAUCET_PRIVATE_KEY`).
+- `scripts/fund-wallet.ts` can be run directly to top up any Flow EVM wallet: `bun run scripts/fund-wallet.ts -- 0xYourWallet 0.1 5`.
+- `scripts/generate-jwt-keys.sh` quickly produces RSA keys for JWT signing and prints escaped `.env` values.
+- `make verify` runs the full quality gate locally (typecheck, lint, format check, tests).
+- All routes validate payloads with Zod; add `zod-to-openapi` if OpenAPI generation is needed later.
 
 ## Evaluation Guidance
 

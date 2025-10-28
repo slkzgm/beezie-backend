@@ -1,0 +1,49 @@
+@API_BASE=http://127.0.0.1:3000
+@EMAIL=demo@example.com
+@PASSWORD=Passw0rd!234
+
+### Sign Up
+# @name signUp
+
+POST {{API_BASE}}/auth/sign-up
+Content-Type: application/json
+
+{
+  "email": "{{EMAIL}}",
+  "password": "{{PASSWORD}}",
+  "passwordConfirmation": "{{PASSWORD}}",
+  "displayName": "Demo User"
+}
+
+> {% client.global.set("ACCESS_TOKEN", response.body.accessToken); %}
+> {% client.global.set("REFRESH_TOKEN", response.body.refreshToken); %}
+> {% client.log(`Sign-up status: ${response.status}`); %}
+
+### Sign In
+# @name signIn
+
+POST {{API_BASE}}/auth/sign-in
+Content-Type: application/json
+
+{
+  "email": "{{EMAIL}}",
+  "password": "{{PASSWORD}}"
+}
+
+> {% client.global.set("ACCESS_TOKEN", response.body.accessToken); %}
+> {% client.global.set("REFRESH_TOKEN", response.body.refreshToken); %}
+> {% client.log(`Signed in as ${response.body.email}`); %}
+
+### Wallet Transfer
+# @name walletTransfer
+# Run `bun run scripts/fund-wallet.ts -- {{EMAIL_WALLET_ADDRESS}}` or `scripts/demo.sh` first to ensure the wallet has FLOW + USDC.
+
+POST {{API_BASE}}/wallet/transfer
+Content-Type: application/json
+Authorization: Bearer {{ACCESS_TOKEN}}
+Idempotency-Key: {{$guid}}
+
+{
+  "amount": "1.00",
+  "destinationAddress": "0x0000000000000000000000000000000000000001"
+}

@@ -1,16 +1,19 @@
 SHELL := /bin/bash
 
+PROJECT_NAME ?= $(notdir $(CURDIR))
+
 COMPOSE ?= docker compose
 DEV_PROFILE := --profile dev
 PROD_PROFILE := --profile prod
 
-.PHONY: help dev-up dev-down dev-reset dev-logs dev-migrate db-shell prod-build prod-up prod-down prod-logs prod-restart ensure-env health test verify
+.PHONY: help dev-up dev-down dev-reset dev-wipe dev-logs dev-migrate db-shell prod-build prod-up prod-down prod-logs prod-restart ensure-env health test verify
 
 help:
 	@echo "Available targets:"
 	@echo "  make dev-up        # Start MySQL only (dev profile)"
 	@echo "  make dev-down      # Stop MySQL (dev profile)"
 	@echo "  make dev-reset     # Stop MySQL and drop the dev volume"
+	@echo "  make dev-wipe      # Fully reset dev stack (prune volumes, restart MySQL, run migrations)"
 	@echo "  make dev-logs      # Tail MySQL logs"
 	@echo "  make dev-migrate   # Run Drizzle migrations from host"
 	@echo "  make db-shell      # Open a MySQL shell via docker"
@@ -34,6 +37,42 @@ dev-down: ensure-env
 
 dev-reset: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) down -v
+
+DEV_VOLUMES := $(PROJECT_NAME)_mysql-data $(PROJECT_NAME)_my-db-dev-volume $(PROJECT_NAME)_my-db-volume
+
+dev-wipe: ensure-env
+	@echo "Stopping dev stack and removing Docker volumes..."
+	-$(COMPOSE) $(DEV_PROFILE) down -v --remove-orphans
+	@for volume in $(DEV_VOLUMES); do \
+		if docker volume inspect $$volume >/dev/null 2>&1; then \
+			echo "Removing volume $$volume"; \
+			docker volume rm $$volume >/dev/null || true; \
+		fi; \
+	done
+	@echo "Starting MySQL with a clean state..."
+	$(COMPOSE) $(DEV_PROFILE) up -d mysql
+	@echo "Waiting for MySQL to become ready..."
+	@set -a; source .env; set +a; \
+	until $(COMPOSE) $(DEV_PROFILE) exec -T mysql mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD >/dev/null 2>&1; do \
+		sleep 1; \
+	done
+	@echo "Running database migrations..."
+	@set -a; source .env; set +a; \
+	  attempt=0; \
+	  until bun run drizzle:migrate >/tmp/beezie-migrate.log 2>&1; do \
+	    attempt=$$((attempt + 1)); \
+	    if [ $$attempt -ge 5 ]; then \
+	      echo "Migration failed after $$attempt attempts:"; \
+	      cat /tmp/beezie-migrate.log; \
+	      rm -f /tmp/beezie-migrate.log; \
+	      exit 1; \
+	    fi; \
+	    echo "Migration attempt $$attempt failed; retrying in 2s..."; \
+	    sleep 2; \
+	  done; \
+	  cat /tmp/beezie-migrate.log; \
+	  rm -f /tmp/beezie-migrate.log
+	@echo "Development environment wiped and re-initialized."
 
 dev-logs: ensure-env
 	$(COMPOSE) $(DEV_PROFILE) logs -f mysql
