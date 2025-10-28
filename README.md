@@ -204,3 +204,12 @@ tests/              # Bun test suites (unit + integration)
 - Populate `.env` from the template, run `make dev-up`, `make dev-migrate`, then `bun run dev` to exercise the API.
 - Tests and linting are automated via `make verify`.
 - The README focuses on the interviewer’s perspective; feel free to reach out for clarifications on design trade-offs or follow-up scenarios.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Suggested Fix |
+| --- | --- | --- |
+| `Error: port is already allocated` when running `make dev-up` | Another MySQL instance is using the requested port (`MYSQL_PORT`, default 3306) | Stop the conflicting service or choose a free port by editing `MYSQL_PORT` in `.env` (e.g. `MYSQL_PORT=33306`) before running `make dev-up`. |
+| `drizzle:migrate` touches an unexpected database | `.env` points to an existing local MySQL schema (not the disposable dev container) | Prefer running against the bundled container (`make dev-up`) or override `MYSQL_HOST`/`MYSQL_DATABASE` when invoking migrations. Use `make dev-wipe` to guarantee a clean sandbox. |
+| `Unable to load faucet private key` in funding scripts | Repo’s sample `faucet-account.txt` missing/removed or env override empty | Restore the provided `faucet-account.txt` (demo-only key) or export `FLOW_FAUCET_PRIVATE_KEY` with your own funded Flow EVM account. |
+| Flow RPC errors (timeouts, 401, 429) | Invalid/missing `FLOW_ACCESS_API` or rate limiting on shared endpoints | Update `.env` with a valid Flow RPC URL (the template defaults to testnet). For offline demos, run `SKIP_FUNDING=1 scripts/demo.sh` to skip on-chain calls. |
