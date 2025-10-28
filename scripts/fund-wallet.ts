@@ -4,14 +4,7 @@ import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  JsonRpcProvider,
-  Wallet,
-  isAddress,
-  parseEther,
-  parseUnits,
-  formatUnits,
-} from 'ethers';
+import { JsonRpcProvider, Wallet, isAddress, parseEther, parseUnits, formatUnits } from 'ethers';
 
 import { FlowUSDC__factory } from '../typechain';
 
@@ -40,21 +33,22 @@ const loadFaucetKeyFromFile = (filePath: string): string | null => {
 
 const loadFundingConfig = (): FundingConfig => {
   const [targetAddress, flowAmount, usdcAmount] = process.argv.slice(2);
+  const address = targetAddress;
 
-  if (!targetAddress) {
+  if (!address) {
     console.error(
       'Usage: bun run scripts/fund-wallet.ts <wallet-address> [flowAmount] [usdcAmount]',
     );
     process.exit(1);
   }
 
-  if (!isAddress(targetAddress)) {
-    console.error(`Target address "${targetAddress}" is not a valid EVM address.`);
+  if (!isAddress(address)) {
+    console.error(`Target address "${String(address)}" is not a valid EVM address.`);
     process.exit(1);
   }
 
   return {
-    targetAddress,
+    targetAddress: address,
     flowAmount: flowAmount ?? process.env.FUND_FLOW_AMOUNT ?? '0.1',
     usdcAmount: usdcAmount ?? process.env.FUND_USDC_AMOUNT ?? '5',
   };
@@ -146,9 +140,7 @@ const fundWallet = async () => {
     const decimals = Number(decimalsRaw);
     const amount = parseUnits(usdcValue.toString(), decimals);
     const tx = await contract.transfer(targetAddress, amount);
-    console.error(
-      `Sent ${usdcAmount} USDC (tx: ${tx.hash}). Waiting for confirmation...`,
-    );
+    console.error(`Sent ${usdcAmount} USDC (tx: ${tx.hash}). Waiting for confirmation...`);
     await tx.wait();
     const balance = await contract.balanceOf(targetAddress);
     console.error(
@@ -161,7 +153,7 @@ const fundWallet = async () => {
   const faucetNativeBalance = await provider.getBalance(faucetWallet.address);
   console.error(`Faucet remaining FLOW balance: ${formatUnits(faucetNativeBalance)}.`);
 
-  console.log(
+  console.info(
     JSON.stringify(
       {
         targetAddress,
